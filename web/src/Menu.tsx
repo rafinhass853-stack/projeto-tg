@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
+import { auth } from './firebase';
 import CadastroMotorista from './CadastroMotorista';
 import ListaMotoristas from './ListaMotoristas';
 import CadastroVeiculo from './CadastroVeiculo';
 import ListaVeiculos from './ListaVeiculos';
+import CadastroCarretas from './CadastroCarretas';
+import ListaCarretas from './ListaCarretas';
 import MenuMotorista from './MenuMotorista';
-import { auth } from './firebase';
 
 const Menu = () => {
-  const [activeTab, setActiveTab] = useState<'motoristas-list' | 'motoristas-cad' | 'veiculos-list' | 'veiculos-cad'>('motoristas-list');
+  const [activeTab, setActiveTab] = useState<'motoristas-cad' | 'motoristas-list' | 'veiculos-cad' | 'veiculos-list' | 'carretas-cad' | 'carretas-list'>('motoristas-list');
   const [selectedMotoristaId, setSelectedMotoristaId] = useState<string | null>(null);
 
   const handleLogout = () => {
@@ -34,30 +36,32 @@ const Menu = () => {
 
         <nav style={navStyle}>
           <div style={sectionTitle}>Motoristas</div>
-          <button 
-            style={activeTab === 'motoristas-cad' ? activeButton : navButton} 
-            onClick={() => { setActiveTab('motoristas-cad'); setSelectedMotoristaId(null); }}
-          >
+          <button style={activeTab === 'motoristas-cad' ? activeButton : navButton} 
+            onClick={() => { setActiveTab('motoristas-cad'); setSelectedMotoristaId(null); }}>
             Cadastrar Motorista
           </button>
-          <button 
-            style={activeTab === 'motoristas-list' ? activeButton : navButton} 
-            onClick={() => { setActiveTab('motoristas-list'); setSelectedMotoristaId(null); }}
-          >
+          <button style={activeTab === 'motoristas-list' ? activeButton : navButton} 
+            onClick={() => { setActiveTab('motoristas-list'); setSelectedMotoristaId(null); }}>
             Motoristas Cadastrados
           </button>
 
+          <div style={sectionTitle}>Carretas</div>
+          <button style={activeTab === 'carretas-cad' ? activeButton : navButton} 
+            onClick={() => { setActiveTab('carretas-cad'); setSelectedMotoristaId(null); }}>
+            Cadastrar Carreta
+          </button>
+          <button style={activeTab === 'carretas-list' ? activeButton : navButton} 
+            onClick={() => { setActiveTab('carretas-list'); setSelectedMotoristaId(null); }}>
+            Carretas Cadastradas
+          </button>
+
           <div style={sectionTitle}>Veículos</div>
-          <button 
-            style={activeTab === 'veiculos-cad' ? activeButton : navButton} 
-            onClick={() => { setActiveTab('veiculos-cad'); setSelectedMotoristaId(null); }}
-          >
+          <button style={activeTab === 'veiculos-cad' ? activeButton : navButton} 
+            onClick={() => { setActiveTab('veiculos-cad'); setSelectedMotoristaId(null); }}>
             Cadastrar Veículo
           </button>
-          <button 
-            style={activeTab === 'veiculos-list' ? activeButton : navButton} 
-            onClick={() => { setActiveTab('veiculos-list'); setSelectedMotoristaId(null); }}
-          >
+          <button style={activeTab === 'veiculos-list' ? activeButton : navButton} 
+            onClick={() => { setActiveTab('veiculos-list'); setSelectedMotoristaId(null); }}>
             Veículos Cadastrados
           </button>
         </nav>
@@ -70,14 +74,14 @@ const Menu = () => {
       {/* Conteúdo Principal */}
       <div style={contentStyle}>
         {activeTab === 'motoristas-cad' && <CadastroMotorista />}
-        
         {activeTab === 'motoristas-list' && (
           selectedMotoristaId ? 
             <MenuMotorista motoristaId={selectedMotoristaId} onVoltar={handleVoltarParaLista} /> 
             : 
             <ListaMotoristas onSelectMotorista={handleSelectMotorista} />
         )}
-
+        {activeTab === 'carretas-cad' && <CadastroCarretas />}
+        {activeTab === 'carretas-list' && <ListaCarretas />}
         {activeTab === 'veiculos-cad' && <CadastroVeiculo />}
         {activeTab === 'veiculos-list' && <ListaVeiculos />}
       </div>
@@ -85,7 +89,7 @@ const Menu = () => {
   );
 };
 
-// ==================== ESTILOS GERAIS ====================
+// ==================== ESTILOS ====================
 const dashboardStyle: React.CSSProperties = {
   display: 'flex',
   minHeight: '100vh',
@@ -108,9 +112,7 @@ const logoStyle: React.CSSProperties = {
   textAlign: 'center'
 };
 
-const navStyle: React.CSSProperties = {
-  flexGrow: 1
-};
+const navStyle: React.CSSProperties = { flexGrow: 1 };
 
 const sectionTitle: React.CSSProperties = {
   color: '#94a3b8',
