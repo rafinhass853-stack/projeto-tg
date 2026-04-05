@@ -8,6 +8,7 @@ import CadastroCarretas from './CadastroCarretas';
 import ListaCarretas from './ListaCarretas';
 import MenuMotorista from './MenuMotorista';
 
+
 const Menu = () => {
   const [activeTab, setActiveTab] = useState<'motoristas-cad' | 'motoristas-list' | 'veiculos-cad' | 'veiculos-list' | 'carretas-cad' | 'carretas-list'>('motoristas-list');
   const [selectedMotoristaId, setSelectedMotoristaId] = useState<string | null>(null);
