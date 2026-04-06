@@ -8,10 +8,11 @@ import CadastroCarretas from './CadastroCarretas';
 import ListaCarretas from './ListaCarretas';
 import MenuMotorista from './MenuMotorista';
 
-
 const Menu = () => {
   const [activeTab, setActiveTab] = useState<'motoristas-cad' | 'motoristas-list' | 'veiculos-cad' | 'veiculos-list' | 'carretas-cad' | 'carretas-list'>('motoristas-list');
   const [selectedMotoristaId, setSelectedMotoristaId] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
 
   const handleLogout = () => {
     auth.signOut();
@@ -26,140 +27,389 @@ const Menu = () => {
     setSelectedMotoristaId(null);
   };
 
+  const menuItems = [
+    {
+      section: 'Motoristas',
+      items: [
+        { id: 'motoristas-cad', label: 'Cadastrar Motorista', icon: '👤', color: '#3b82f6' },
+        { id: 'motoristas-list', label: 'Motoristas Cadastrados', icon: '📋', color: '#3b82f6' }
+      ]
+    },
+    {
+      section: 'Carretas',
+      items: [
+        { id: 'carretas-cad', label: 'Cadastrar Carreta', icon: '🚛', color: '#10b981' },
+        { id: 'carretas-list', label: 'Carretas Cadastradas', icon: '📦', color: '#10b981' }
+      ]
+    },
+    {
+      section: 'Veículos',
+      items: [
+        { id: 'veiculos-cad', label: 'Cadastrar Veículo', icon: '🚗', color: '#f59e0b' },
+        { id: 'veiculos-list', label: 'Veículos Cadastrados', icon: '🚙', color: '#f59e0b' }
+      ]
+    }
+  ];
+
+  const getCurrentTitle = () => {
+    for (const section of menuItems) {
+      const item = section.items.find(i => i.id === activeTab);
+      if (item) return item.label;
+    }
+    return 'Dashboard';
+  };
+
   return (
     <div style={dashboardStyle}>
       {/* Sidebar */}
-      <div style={sidebarStyle}>
+      <div style={{ ...sidebarStyle, width: sidebarCollapsed ? '80px' : '280px' }}>
+        <button 
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)} 
+          style={collapseButtonStyle}
+          title={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}
+        >
+          {sidebarCollapsed ? '→' : '←'}
+        </button>
+
         <div style={logoStyle}>
-          <h2>Logística TG</h2>
-          <p>Painel Gestor</p>
+          {!sidebarCollapsed ? (
+            <>
+              <h2 style={logoTitleStyle}>Logística TG</h2>
+              <p style={logoSubtitleStyle}>Painel Gestor</p>
+            </>
+          ) : (
+            <div style={logoIconStyle}>📦</div>
+          )}
         </div>
 
         <nav style={navStyle}>
-          <div style={sectionTitle}>Motoristas</div>
-          <button style={activeTab === 'motoristas-cad' ? activeButton : navButton} 
-            onClick={() => { setActiveTab('motoristas-cad'); setSelectedMotoristaId(null); }}>
-            Cadastrar Motorista
-          </button>
-          <button style={activeTab === 'motoristas-list' ? activeButton : navButton} 
-            onClick={() => { setActiveTab('motoristas-list'); setSelectedMotoristaId(null); }}>
-            Motoristas Cadastrados
-          </button>
-
-          <div style={sectionTitle}>Carretas</div>
-          <button style={activeTab === 'carretas-cad' ? activeButton : navButton} 
-            onClick={() => { setActiveTab('carretas-cad'); setSelectedMotoristaId(null); }}>
-            Cadastrar Carreta
-          </button>
-          <button style={activeTab === 'carretas-list' ? activeButton : navButton} 
-            onClick={() => { setActiveTab('carretas-list'); setSelectedMotoristaId(null); }}>
-            Carretas Cadastradas
-          </button>
-
-          <div style={sectionTitle}>Veículos</div>
-          <button style={activeTab === 'veiculos-cad' ? activeButton : navButton} 
-            onClick={() => { setActiveTab('veiculos-cad'); setSelectedMotoristaId(null); }}>
-            Cadastrar Veículo
-          </button>
-          <button style={activeTab === 'veiculos-list' ? activeButton : navButton} 
-            onClick={() => { setActiveTab('veiculos-list'); setSelectedMotoristaId(null); }}>
-            Veículos Cadastrados
-          </button>
+          {menuItems.map((section) => (
+            <div key={section.section}>
+              {!sidebarCollapsed && <div style={sectionTitleStyle}>{section.section}</div>}
+              {section.items.map((item) => (
+                <button
+                  key={item.id}
+                  style={{
+                    ...(sidebarCollapsed ? navButtonCollapsedStyle : navButtonStyle),
+                    ...(activeTab === item.id ? { ...activeButtonStyle, backgroundColor: item.color } : {}),
+                    backgroundColor: hoveredItem === item.id && activeTab !== item.id ? 'rgba(255,255,255,0.1)' : (activeTab === item.id ? item.color : 'transparent'),
+                  }}
+                  onMouseEnter={() => setHoveredItem(item.id)}
+                  onMouseLeave={() => setHoveredItem(null)}
+                  onClick={() => { 
+                    setActiveTab(item.id as any); 
+                    setSelectedMotoristaId(null);
+                  }}
+                  title={sidebarCollapsed ? item.label : ''}
+                >
+                  <span style={iconStyle}>{item.icon}</span>
+                  {!sidebarCollapsed && item.label}
+                </button>
+              ))}
+            </div>
+          ))}
         </nav>
 
-        <button onClick={handleLogout} style={logoutButton}>
-          Sair do Sistema
+        <button onClick={handleLogout} style={logoutButtonStyle}>
+          <span style={iconStyle}>🚪</span>
+          {!sidebarCollapsed && 'Sair do Sistema'}
         </button>
       </div>
 
       {/* Conteúdo Principal */}
       <div style={contentStyle}>
-        {activeTab === 'motoristas-cad' && <CadastroMotorista />}
-        {activeTab === 'motoristas-list' && (
-          selectedMotoristaId ? 
-            <MenuMotorista motoristaId={selectedMotoristaId} onVoltar={handleVoltarParaLista} /> 
-            : 
-            <ListaMotoristas onSelectMotorista={handleSelectMotorista} />
-        )}
-        {activeTab === 'carretas-cad' && <CadastroCarretas />}
-        {activeTab === 'carretas-list' && <ListaCarretas />}
-        {activeTab === 'veiculos-cad' && <CadastroVeiculo />}
-        {activeTab === 'veiculos-list' && <ListaVeiculos />}
+        {/* Header */}
+        <div style={headerStyle}>
+          <div style={headerLeftStyle}>
+            <h1 style={pageTitleStyle}>{getCurrentTitle()}</h1>
+            <p style={pageSubtitleStyle}>
+              {selectedMotoristaId ? 'Gerenciando motorista específico' : 'Gerencie sua frota de forma eficiente'}
+            </p>
+          </div>
+          <div style={userInfoStyle}>
+            <div style={avatarStyle}>👨‍💼</div>
+            <div style={userDetailsStyle}>
+              <div style={userNameStyle}>Administrador</div>
+              <div style={userRoleStyle}>Gestor de Frota</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Content Area */}
+        <div style={contentAreaStyle}>
+          <div style={contentWrapperStyle}>
+            {activeTab === 'motoristas-cad' && <CadastroMotorista />}
+            {activeTab === 'motoristas-list' && (
+              selectedMotoristaId ? 
+                <MenuMotorista motoristaId={selectedMotoristaId} onVoltar={handleVoltarParaLista} /> 
+                : 
+                <ListaMotoristas onSelectMotorista={handleSelectMotorista} />
+            )}
+            {activeTab === 'carretas-cad' && <CadastroCarretas />}
+            {activeTab === 'carretas-list' && <ListaCarretas />}
+            {activeTab === 'veiculos-cad' && <CadastroVeiculo />}
+            {activeTab === 'veiculos-list' && <ListaVeiculos />}
+          </div>
+        </div>
       </div>
     </div>
   );
 };
 
-// ==================== ESTILOS ====================
+// ==================== ESTILOS MODERNOS ====================
 const dashboardStyle: React.CSSProperties = {
   display: 'flex',
   minHeight: '100vh',
-  backgroundColor: '#f8fafc',
-  fontFamily: 'Segoe UI, sans-serif'
+  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  fontFamily: "'Segoe UI', 'Inter', system-ui, sans-serif"
 };
 
 const sidebarStyle: React.CSSProperties = {
-  width: '280px',
-  backgroundColor: '#1e2937',
+  backgroundColor: 'rgba(30, 41, 59, 0.95)',
+  backdropFilter: 'blur(10px)',
   color: 'white',
-  padding: '30px 20px',
+  padding: '20px',
   display: 'flex',
   flexDirection: 'column',
-  boxShadow: '2px 0 10px rgba(0,0,0,0.1)'
+  boxShadow: '2px 0 20px rgba(0,0,0,0.2)',
+  transition: 'width 0.3s ease',
+  position: 'relative',
+  zIndex: 10
+};
+
+const collapseButtonStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: '20px',
+  right: '-12px',
+  width: '24px',
+  height: '24px',
+  borderRadius: '50%',
+  background: '#3b82f6',
+  border: 'none',
+  color: 'white',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '12px',
+  transition: 'all 0.3s ease',
+  zIndex: 20
 };
 
 const logoStyle: React.CSSProperties = {
-  marginBottom: '50px',
+  marginBottom: '40px',
+  textAlign: 'center',
+  marginTop: '20px'
+};
+
+const logoTitleStyle: React.CSSProperties = {
+  fontSize: '24px',
+  fontWeight: '700',
+  marginBottom: '4px',
+  background: 'linear-gradient(135deg, #fff 0%, #cbd5e1 100%)',
+  WebkitBackgroundClip: 'text',
+  WebkitTextFillColor: 'transparent'
+};
+
+const logoSubtitleStyle: React.CSSProperties = {
+  fontSize: '12px',
+  color: '#94a3b8',
+  marginTop: '4px'
+};
+
+const logoIconStyle: React.CSSProperties = {
+  fontSize: '32px',
   textAlign: 'center'
 };
 
-const navStyle: React.CSSProperties = { flexGrow: 1 };
-
-const sectionTitle: React.CSSProperties = {
-  color: '#94a3b8',
-  fontSize: '13px',
-  fontWeight: '600',
-  margin: '25px 0 10px 15px',
-  textTransform: 'uppercase'
+const navStyle: React.CSSProperties = {
+  flex: 1,
+  marginTop: '20px'
 };
 
-const navButton: React.CSSProperties = {
-  display: 'block',
+const sectionTitleStyle: React.CSSProperties = {
+  color: '#94a3b8',
+  fontSize: '11px',
+  fontWeight: '600',
+  margin: '20px 0 8px 12px',
+  textTransform: 'uppercase',
+  letterSpacing: '1px'
+};
+
+const navButtonStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
   width: '100%',
-  padding: '14px 20px',
+  padding: '12px 16px',
   margin: '4px 0',
   backgroundColor: 'transparent',
   color: '#cbd5e1',
   border: 'none',
-  textAlign: 'left',
-  borderRadius: '10px',
+  borderRadius: '12px',
   cursor: 'pointer',
-  fontSize: '15px'
+  fontSize: '14px',
+  fontWeight: '500',
+  transition: 'all 0.3s ease',
+  textAlign: 'left'
 };
 
-const activeButton: React.CSSProperties = {
-  ...navButton,
-  backgroundColor: '#3b82f6',
+const navButtonCollapsedStyle: React.CSSProperties = {
+  ...navButtonStyle,
+  justifyContent: 'center',
+  padding: '12px',
+  fontSize: '20px'
+};
+
+const activeButtonStyle: React.CSSProperties = {
   color: 'white',
-  fontWeight: '600'
+  boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
 };
 
-const logoutButton: React.CSSProperties = {
-  marginTop: 'auto',
-  padding: '14px',
+const iconStyle: React.CSSProperties = {
+  fontSize: '18px',
+  minWidth: '24px'
+};
+
+const logoutButtonStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
+  padding: '12px 16px',
   backgroundColor: '#ef4444',
   color: 'white',
   border: 'none',
-  borderRadius: '10px',
+  borderRadius: '12px',
   cursor: 'pointer',
-  fontSize: '16px',
-  fontWeight: '600'
+  fontSize: '14px',
+  fontWeight: '600',
+  marginTop: '20px',
+  transition: 'all 0.3s ease'
 };
 
 const contentStyle: React.CSSProperties = {
   flex: 1,
-  padding: '0',
-  overflowY: 'auto'
+  display: 'flex',
+  flexDirection: 'column',
+  overflow: 'hidden'
 };
+
+const headerStyle: React.CSSProperties = {
+  background: 'white',
+  padding: '24px 32px',
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+  flexWrap: 'wrap',
+  gap: '16px'
+};
+
+const headerLeftStyle: React.CSSProperties = {
+  flex: 1
+};
+
+const pageTitleStyle: React.CSSProperties = {
+  fontSize: '28px',
+  fontWeight: '700',
+  color: '#1e2937',
+  marginBottom: '8px'
+};
+
+const pageSubtitleStyle: React.CSSProperties = {
+  fontSize: '14px',
+  color: '#64748b'
+};
+
+const userInfoStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
+  padding: '8px 16px',
+  background: '#f8fafc',
+  borderRadius: '16px'
+};
+
+const avatarStyle: React.CSSProperties = {
+  width: '40px',
+  height: '40px',
+  borderRadius: '50%',
+  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '20px'
+};
+
+const userDetailsStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column'
+};
+
+const userNameStyle: React.CSSProperties = {
+  fontSize: '14px',
+  fontWeight: '600',
+  color: '#1e2937'
+};
+
+const userRoleStyle: React.CSSProperties = {
+  fontSize: '12px',
+  color: '#64748b'
+};
+
+const contentAreaStyle: React.CSSProperties = {
+  flex: 1,
+  overflowY: 'auto',
+  background: '#f8fafc'
+};
+
+const contentWrapperStyle: React.CSSProperties = {
+  padding: '24px'
+};
+
+// Adicionar animações globais
+if (typeof document !== 'undefined') {
+  const styleSheet = document.createElement("style");
+  styleSheet.textContent = `
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+    
+    button:hover {
+      transform: translateY(-2px);
+    }
+    
+    button:active {
+      transform: translateY(0);
+    }
+    
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 10px;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 10px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  `;
+  document.head.appendChild(styleSheet);
+}
 
 export default Menu;
