@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import EscalaFolga from './EscalaFolga';
 
@@ -7,13 +7,13 @@ interface Motorista {
   id: string;
   nome: string;
   cpf: string;
-  telefone?: string;
   whatsapp?: string;
-  email?: string;
   cidade?: string;
   cnhCategoria?: string;
-  fotoPerfilUrl?: string;
   temMopp?: string;
+  email?: string;
+  telefone?: string;
+  fotoPerfilUrl?: string;
   createdAt?: string;
 }
 
@@ -27,6 +27,8 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
   const [loading, setLoading] = useState(true);
   const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState<Motorista | null>(null);
 
   useEffect(() => {
     const fetchMotorista = async () => {
@@ -34,7 +36,9 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
         const docRef = doc(db, 'motoristas', motoristaId);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          setMotorista({ id: docSnap.id, ...docSnap.data() } as Motorista);
+          const data = { id: docSnap.id, ...docSnap.data() } as Motorista;
+          setMotorista(data);
+          setEditForm(data);
         }
       } catch (error) {
         console.error('Erro ao carregar motorista:', error);
@@ -45,6 +49,28 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
     fetchMotorista();
   }, [motoristaId]);
 
+  const handleSaveEdit = async () => {
+    if (!editForm || !motorista) return;
+
+    try {
+      const motoristaRef = doc(db, 'motoristas', motorista.id);
+      await updateDoc(motoristaRef, {
+        nome: editForm.nome,
+        cpf: editForm.cpf,           // ← CPF incluído
+        whatsapp: editForm.whatsapp,
+        cidade: editForm.cidade,
+        cnhCategoria: editForm.cnhCategoria,
+        temMopp: editForm.temMopp,
+      });
+      setMotorista(editForm);
+      setShowEditModal(false);
+      alert('✅ Motorista atualizado com sucesso!');
+    } catch (error) {
+      console.error(error);
+      alert('❌ Erro ao atualizar motorista');
+    }
+  };
+
   const menuItems = [
     { id: 'programar', title: "Programar Motorista", icon: "📅", desc: "Agendar viagens e rotas", color: "#3b82f6", bgColor: "#eff6ff" },
     { id: 'historico', title: "Histórico de Viagens", icon: "🛣️", desc: "Todas as viagens realizadas", color: "#10b981", bgColor: "#ecfdf5" },
@@ -54,160 +80,111 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
     { id: 'hodometro', title: "Hodômetro", icon: "🔢", desc: "Controle de quilometragem", color: "#06b6d4", bgColor: "#ecfeff" },
   ];
 
-  const getInitials = (nome: string) => {
-    return nome
-      .split(' ')
-      .map(word => word[0])
-      .slice(0, 2)
-      .join('')
-      .toUpperCase();
-  };
+  const getInitials = (nome: string) => nome.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
 
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return 'Data não disponível';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('pt-BR');
-  };
-
-  if (loading) {
-    return (
-      <div style={loadingContainerStyle}>
-        <div style={spinnerStyle}></div>
-        <p style={loadingTextStyle}>Carregando informações do motorista...</p>
-      </div>
-    );
-  }
-
-  if (!motorista) {
-    return (
-      <div style={errorContainerStyle}>
-        <div style={errorIconStyle}>⚠️</div>
-        <h2 style={errorTitleStyle}>Motorista não encontrado</h2>
-        <p style={errorTextStyle}>Não foi possível encontrar os dados deste motorista.</p>
-        <button onClick={onVoltar} style={errorButtonStyle}>Voltar para lista</button>
-      </div>
-    );
-  }
+  if (loading) return <div style={loadingStyle}>Carregando informações do motorista...</div>;
+  if (!motorista) return <div style={errorStyle}>Motorista não encontrado</div>;
 
   if (activeSubTab === 'escala') {
     return <EscalaFolga motoristaId={motoristaId} onVoltar={() => setActiveSubTab(null)} />;
   }
 
   return (
-    <div style={fullContainerStyle}>
-      {/* Botão voltar aprimorado */}
-      <button onClick={onVoltar} style={voltarButtonStyle}>
-        <span style={voltarIconStyle}>←</span>
-        Voltar para a lista de motoristas
-      </button>
+    <div style={containerStyle}>
+      <button onClick={onVoltar} style={voltarBtn}>← Voltar para lista</button>
 
-      {/* Header com gradiente e informações do motorista */}
-      <div style={headerWrapperStyle}>
-        <div style={headerStyle}>
-          <div style={fotoContainerStyle}>
-            {motorista.fotoPerfilUrl ? (
-              <img src={motorista.fotoPerfilUrl} alt={motorista.nome} style={fotoStyle} />
-            ) : (
-              <div style={initialsCircleStyle}>{getInitials(motorista.nome)}</div>
-            )}
-            <div style={statusBadgeStyle}>
-              {motorista.temMopp === 'Sim' ? '✅ MOPP' : '❌ Sem MOPP'}
-            </div>
+      {/* Header do Motorista */}
+      <div style={headerStyle}>
+        <div style={fotoWrapper}>
+          {motorista.fotoPerfilUrl ? (
+            <img src={motorista.fotoPerfilUrl} alt={motorista.nome} style={fotoStyle} />
+          ) : (
+            <div style={initialsStyle}>{getInitials(motorista.nome)}</div>
+          )}
+          <div style={moppBadge}>
+            {motorista.temMopp === 'Sim' ? '✅ MOPP' : '❌ Sem MOPP'}
           </div>
-          
-          <div style={infoContainerStyle}>
-            <h1 style={nomeStyle}>{motorista.nome}</h1>
-            <div style={cpfBadgeStyle}>
-              <span style={cpfLabelStyle}>CPF</span>
-              <span style={cpfValueStyle}>{motorista.cpf}</span>
-            </div>
-            
-            <div style={infoGridStyle}>
-              <div style={infoCardStyle}>
-                <span style={infoIconStyle}>📱</span>
-                <div>
-                  <div style={infoLabelStyle}>WhatsApp</div>
-                  <div style={infoValueStyle}>{motorista.whatsapp || motorista.telefone || 'Não informado'}</div>
-                </div>
-              </div>
-              
-              <div style={infoCardStyle}>
-                <span style={infoIconStyle}>📍</span>
-                <div>
-                  <div style={infoLabelStyle}>Cidade</div>
-                  <div style={infoValueStyle}>{motorista.cidade || 'Não informada'}</div>
-                </div>
-              </div>
-              
-              <div style={infoCardStyle}>
-                <span style={infoIconStyle}>🪪</span>
-                <div>
-                  <div style={infoLabelStyle}>CNH</div>
-                  <div style={infoValueStyle}>Categoria {motorista.cnhCategoria || 'Não informada'}</div>
-                </div>
-              </div>
-              
-              {motorista.createdAt && (
-                <div style={infoCardStyle}>
-                  <span style={infoIconStyle}>📅</span>
-                  <div>
-                    <div style={infoLabelStyle}>Cadastrado em</div>
-                    <div style={infoValueStyle}>{formatDate(motorista.createdAt)}</div>
-                  </div>
-                </div>
-              )}
-            </div>
+        </div>
+
+        <div style={infoSection}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <h1 style={nomeTitle}>{motorista.nome}</h1>
+            <button onClick={() => setShowEditModal(true)} style={editMainButton}>
+              ✏️ Editar Motorista
+            </button>
+          </div>
+
+          <p style={cpfText}>CPF: <strong>{motorista.cpf}</strong></p>
+
+          <div style={detailsGrid}>
+            <div>📱 WhatsApp: <strong>{motorista.whatsapp || 'Não informado'}</strong></div>
+            <div>📍 Cidade: <strong>{motorista.cidade || 'Não informada'}</strong></div>
+            <div>🪪 CNH: <strong>{motorista.cnhCategoria || '—'}</strong></div>
           </div>
         </div>
       </div>
 
-      {/* Título do menu */}
-      <div style={menuHeaderStyle}>
-        <h2 style={menuTitleStyle}>Menu do Motorista</h2>
-        <p style={menuSubtitleStyle}>Selecione uma opção para gerenciar</p>
-      </div>
+      {/* Menu de Opções */}
+      <h2 style={menuTitle}>Menu do Motorista</h2>
 
-      {/* Grid de cards animados */}
-      <div style={gridStyle}>
-        {menuItems.map((item) => (
+      <div style={cardsGrid}>
+        {menuItems.map(item => (
           <div
             key={item.id}
-            style={{
-              ...menuCardStyle,
-              transform: hoveredCard === item.id ? 'translateY(-8px)' : 'translateY(0)',
-              boxShadow: hoveredCard === item.id 
-                ? '0 20px 40px rgba(0,0,0,0.12)' 
-                : '0 8px 28px rgba(0, 0, 0, 0.07)'
-            }}
+            style={menuCardStyle}
             onMouseEnter={() => setHoveredCard(item.id)}
             onMouseLeave={() => setHoveredCard(null)}
             onClick={() => setActiveSubTab(item.id)}
           >
-            <div style={{ ...iconWrapperStyle, backgroundColor: item.bgColor }}>
-              <div style={{ ...iconContainerStyle, color: item.color }}>{item.icon}</div>
+            <div style={{ ...iconCircle, backgroundColor: item.bgColor }}>
+              <span style={{ color: item.color, fontSize: '42px' }}>{item.icon}</span>
             </div>
-            <h3 style={cardTitleStyle}>{item.title}</h3>
-            <p style={cardDescStyle}>{item.desc}</p>
-            <div style={cardArrowStyle}>
-              <span style={arrowIconStyle}>→</span>
-            </div>
+            <h3>{item.title}</h3>
+            <p>{item.desc}</p>
           </div>
         ))}
       </div>
 
-      {/* Placeholder para funcionalidades em desenvolvimento */}
-      {activeSubTab && activeSubTab !== 'escala' && (
-        <div style={comingSoonModalStyle}>
-          <div style={comingSoonContentStyle}>
-            <div style={comingSoonIconStyle}>🚧</div>
-            <h3 style={comingSoonTitleStyle}>Em desenvolvimento</h3>
-            <p style={comingSoonTextStyle}>
-              A funcionalidade "{menuItems.find(i => i.id === activeSubTab)?.title}" 
-              estará disponível em breve!
-            </p>
-            <button onClick={() => setActiveSubTab(null)} style={comingSoonButtonStyle}>
-              Voltar ao menu
-            </button>
+      {/* ====================== MODAL DE EDIÇÃO ====================== */}
+      {showEditModal && editForm && (
+        <div style={modalOverlay} onClick={() => setShowEditModal(false)}>
+          <div style={modalContent} onClick={e => e.stopPropagation()}>
+            <h2>Editar Motorista</h2>
+
+            <div style={formGrid}>
+              <div>
+                <label>Nome Completo *</label>
+                <input type="text" value={editForm.nome} onChange={e => setEditForm({...editForm, nome: e.target.value})} style={inputField} />
+              </div>
+              <div>
+                <label>CPF *</label>
+                <input type="text" value={editForm.cpf} onChange={e => setEditForm({...editForm, cpf: e.target.value})} style={inputField} />
+              </div>
+              <div>
+                <label>WhatsApp</label>
+                <input type="text" value={editForm.whatsapp || ''} onChange={e => setEditForm({...editForm, whatsapp: e.target.value})} style={inputField} />
+              </div>
+              <div>
+                <label>Cidade</label>
+                <input type="text" value={editForm.cidade || ''} onChange={e => setEditForm({...editForm, cidade: e.target.value})} style={inputField} />
+              </div>
+              <div>
+                <label>CNH Categoria</label>
+                <input type="text" value={editForm.cnhCategoria || ''} onChange={e => setEditForm({...editForm, cnhCategoria: e.target.value.toUpperCase()})} style={inputField} maxLength={2} />
+              </div>
+              <div>
+                <label>Possui MOPP?</label>
+                <select value={editForm.temMopp || 'Não'} onChange={e => setEditForm({...editForm, temMopp: e.target.value})} style={inputField}>
+                  <option value="Não">Não</option>
+                  <option value="Sim">Sim</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={modalActions}>
+              <button onClick={() => setShowEditModal(false)} style={cancelBtn}>Cancelar</button>
+              <button onClick={handleSaveEdit} style={saveBtn}>Salvar Alterações</button>
+            </div>
           </div>
         </div>
       )}
@@ -215,363 +192,44 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
   );
 };
 
-// ==================== ESTILOS MODERNOS ====================
-const fullContainerStyle: React.CSSProperties = {
-  minHeight: '100vh',
-  background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
-  padding: '40px 24px'
-};
+/* ==================== ESTILOS ==================== */
+const containerStyle: React.CSSProperties = { minHeight: '100vh', background: 'linear-gradient(135deg, #f8fafc, #e0e7ff)', padding: '30px 20px' };
 
-const loadingContainerStyle: React.CSSProperties = {
-  minHeight: '100vh',
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-  background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)'
-};
+const voltarBtn: React.CSSProperties = { padding: '10px 20px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '12px', cursor: 'pointer', marginBottom: '20px' };
 
-const spinnerStyle: React.CSSProperties = {
-  width: '48px',
-  height: '48px',
-  border: '4px solid #e2e8f0',
-  borderTop: '4px solid #3b82f6',
-  borderRadius: '50%',
-  animation: 'spin 1s linear infinite'
-};
+const headerStyle: React.CSSProperties = { display: 'flex', gap: '40px', background: 'white', padding: '40px', borderRadius: '24px', boxShadow: '0 15px 40px rgba(0,0,0,0.1)', maxWidth: '1200px', margin: '0 auto 40px' };
 
-const loadingTextStyle: React.CSSProperties = {
-  marginTop: '20px',
-  color: '#64748b',
-  fontSize: '16px'
-};
+const fotoWrapper: React.CSSProperties = { position: 'relative', width: '160px', height: '160px' };
+const fotoStyle: React.CSSProperties = { width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', border: '5px solid white' };
+const initialsStyle: React.CSSProperties = { ...fotoStyle, background: 'linear-gradient(135deg, #3b82f6, #1e3a8a)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '48px', color: 'white', fontWeight: 'bold' };
+const moppBadge: React.CSSProperties = { position: 'absolute', bottom: '0', right: '0', background: 'white', padding: '6px 14px', borderRadius: '20px', fontSize: '13px', boxShadow: '0 4px 10px rgba(0,0,0,0.15)' };
 
-const errorContainerStyle: React.CSSProperties = {
-  minHeight: '100vh',
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-  background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
-  textAlign: 'center'
-};
+const infoSection: React.CSSProperties = { flex: 1 };
+const nomeTitle: React.CSSProperties = { fontSize: '34px', fontWeight: '700', margin: '0 0 8px 0' };
+const cpfText: React.CSSProperties = { fontSize: '16px', color: '#475569', marginBottom: '20px' };
 
-const errorIconStyle: React.CSSProperties = {
-  fontSize: '64px',
-  marginBottom: '20px'
-};
+const detailsGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' };
 
-const errorTitleStyle: React.CSSProperties = {
-  fontSize: '28px',
-  color: '#1e2937',
-  marginBottom: '12px'
-};
+const editMainButton: React.CSSProperties = { padding: '12px 28px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' };
 
-const errorTextStyle: React.CSSProperties = {
-  color: '#64748b',
-  marginBottom: '24px'
-};
+const menuTitle: React.CSSProperties = { textAlign: 'center', fontSize: '28px', fontWeight: '700', marginBottom: '30px', color: '#1e2937' };
 
-const errorButtonStyle: React.CSSProperties = {
-  padding: '12px 24px',
-  background: '#3b82f6',
-  color: 'white',
-  border: 'none',
-  borderRadius: '12px',
-  cursor: 'pointer',
-  fontSize: '16px',
-  fontWeight: '600'
-};
+const cardsGrid: React.CSSProperties = { maxWidth: '1200px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' };
 
-const voltarButtonStyle: React.CSSProperties = {
-  background: 'white',
-  border: 'none',
-  padding: '12px 24px',
-  borderRadius: '12px',
-  color: '#475569',
-  cursor: 'pointer',
-  fontWeight: '600',
-  fontSize: '14px',
-  marginBottom: '30px',
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '8px',
-  transition: 'all 0.3s ease',
-  boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
-};
+const menuCardStyle: React.CSSProperties = { background: 'white', padding: '32px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.08)', cursor: 'pointer', transition: 'all 0.3s' };
 
-const voltarIconStyle: React.CSSProperties = {
-  fontSize: '18px'
-};
+const iconCircle: React.CSSProperties = { width: '80px', height: '80px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px' };
 
-const headerWrapperStyle: React.CSSProperties = {
-  maxWidth: '1200px',
-  margin: '0 auto 40px auto'
-};
+/* Modal */
+const modalOverlay: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 };
+const modalContent: React.CSSProperties = { background: 'white', padding: '40px', borderRadius: '20px', width: '90%', maxWidth: '560px' };
+const formGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px' };
+const inputField: React.CSSProperties = { width: '100%', padding: '14px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '16px' };
+const modalActions: React.CSSProperties = { marginTop: '30px', display: 'flex', gap: '16px' };
+const cancelBtn: React.CSSProperties = { flex: 1, padding: '14px', background: '#e2e8f0', border: 'none', borderRadius: '12px', cursor: 'pointer' };
+const saveBtn: React.CSSProperties = { flex: 1, padding: '14px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' };
 
-const headerStyle: React.CSSProperties = {
-  background: 'white',
-  borderRadius: '28px',
-  padding: '40px',
-  boxShadow: '0 20px 40px rgba(0,0,0,0.08)',
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: '30px'
-};
-
-const fotoContainerStyle: React.CSSProperties = {
-  position: 'relative',
-  width: '160px',
-  height: '160px'
-};
-
-const fotoStyle: React.CSSProperties = {
-  width: '100%',
-  height: '100%',
-  borderRadius: '50%',
-  objectFit: 'cover',
-  border: '4px solid white',
-  boxShadow: '0 8px 20px rgba(0,0,0,0.1)'
-};
-
-const initialsCircleStyle: React.CSSProperties = {
-  width: '100%',
-  height: '100%',
-  borderRadius: '50%',
-  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: '48px',
-  fontWeight: '700',
-  color: 'white',
-  border: '4px solid white',
-  boxShadow: '0 8px 20px rgba(0,0,0,0.1)'
-};
-
-const statusBadgeStyle: React.CSSProperties = {
-  position: 'absolute',
-  bottom: '0',
-  right: '0',
-  background: 'white',
-  padding: '6px 12px',
-  borderRadius: '20px',
-  fontSize: '12px',
-  fontWeight: '600',
-  color: '#3b82f6',
-  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-  border: '2px solid white'
-};
-
-const infoContainerStyle: React.CSSProperties = {
-  flex: 1
-};
-
-const nomeStyle: React.CSSProperties = {
-  fontSize: '32px',
-  fontWeight: '700',
-  color: '#1e2937',
-  marginBottom: '12px'
-};
-
-const cpfBadgeStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '8px',
-  background: '#f1f5f9',
-  padding: '6px 12px',
-  borderRadius: '8px',
-  marginBottom: '20px'
-};
-
-const cpfLabelStyle: React.CSSProperties = {
-  fontSize: '12px',
-  fontWeight: '600',
-  color: '#64748b',
-  textTransform: 'uppercase'
-};
-
-const cpfValueStyle: React.CSSProperties = {
-  fontSize: '14px',
-  fontWeight: '600',
-  color: '#1e2937'
-};
-
-const infoGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-  gap: '16px'
-};
-
-const infoCardStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '12px',
-  padding: '12px',
-  background: '#f8fafc',
-  borderRadius: '12px'
-};
-
-const infoIconStyle: React.CSSProperties = {
-  fontSize: '24px'
-};
-
-const infoLabelStyle: React.CSSProperties = {
-  fontSize: '12px',
-  color: '#64748b',
-  marginBottom: '4px'
-};
-
-const infoValueStyle: React.CSSProperties = {
-  fontSize: '14px',
-  fontWeight: '600',
-  color: '#1e2937'
-};
-
-const menuHeaderStyle: React.CSSProperties = {
-  maxWidth: '1200px',
-  margin: '0 auto 32px auto',
-  textAlign: 'center'
-};
-
-const menuTitleStyle: React.CSSProperties = {
-  fontSize: '32px',
-  fontWeight: '700',
-  color: '#1e2937',
-  marginBottom: '8px'
-};
-
-const menuSubtitleStyle: React.CSSProperties = {
-  fontSize: '16px',
-  color: '#64748b'
-};
-
-const gridStyle: React.CSSProperties = {
-  maxWidth: '1200px',
-  margin: '0 auto',
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-  gap: '24px'
-};
-
-const menuCardStyle: React.CSSProperties = {
-  background: 'white',
-  borderRadius: '20px',
-  padding: '32px 24px',
-  position: 'relative',
-  cursor: 'pointer',
-  transition: 'all 0.3s ease',
-  overflow: 'hidden'
-};
-
-const iconWrapperStyle: React.CSSProperties = {
-  width: '80px',
-  height: '80px',
-  borderRadius: '50%',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  marginBottom: '24px'
-};
-
-const iconContainerStyle: React.CSSProperties = {
-  fontSize: '40px'
-};
-
-const cardTitleStyle: React.CSSProperties = {
-  fontSize: '20px',
-  fontWeight: '700',
-  color: '#1e2937',
-  marginBottom: '12px'
-};
-
-const cardDescStyle: React.CSSProperties = {
-  fontSize: '14px',
-  color: '#64748b',
-  lineHeight: '1.5',
-  marginBottom: '20px'
-};
-
-const cardArrowStyle: React.CSSProperties = {
-  position: 'absolute',
-  bottom: '24px',
-  right: '24px',
-  opacity: 0,
-  transition: 'opacity 0.3s ease'
-};
-
-const arrowIconStyle: React.CSSProperties = {
-  fontSize: '20px',
-  color: '#3b82f6'
-};
-
-const comingSoonModalStyle: React.CSSProperties = {
-  position: 'fixed',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  background: 'rgba(0,0,0,0.6)',
-  backdropFilter: 'blur(4px)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 1000
-};
-
-const comingSoonContentStyle: React.CSSProperties = {
-  background: 'white',
-  borderRadius: '28px',
-  padding: '48px',
-  textAlign: 'center',
-  maxWidth: '400px',
-  width: '90%'
-};
-
-const comingSoonIconStyle: React.CSSProperties = {
-  fontSize: '64px',
-  marginBottom: '20px'
-};
-
-const comingSoonTitleStyle: React.CSSProperties = {
-  fontSize: '28px',
-  fontWeight: '700',
-  color: '#1e2937',
-  marginBottom: '12px'
-};
-
-const comingSoonTextStyle: React.CSSProperties = {
-  fontSize: '16px',
-  color: '#64748b',
-  marginBottom: '24px',
-  lineHeight: '1.5'
-};
-
-const comingSoonButtonStyle: React.CSSProperties = {
-  padding: '12px 24px',
-  background: '#3b82f6',
-  color: 'white',
-  border: 'none',
-  borderRadius: '12px',
-  fontSize: '16px',
-  fontWeight: '600',
-  cursor: 'pointer'
-};
-
-// Adicionar animações globais
-if (typeof document !== 'undefined') {
-  const styleSheet = document.createElement("style");
-  styleSheet.textContent = `
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    
-    .menu-card:hover .card-arrow {
-      opacity: 1;
-    }
-  `;
-  document.head.appendChild(styleSheet);
-}
+const loadingStyle: React.CSSProperties = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' };
+const errorStyle: React.CSSProperties = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'red', fontSize: '20px' };
 
 export default MenuMotorista;

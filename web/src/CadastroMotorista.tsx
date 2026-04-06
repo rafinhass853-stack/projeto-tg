@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
-import { collection, addDoc, query, where, onSnapshot, updateDoc, doc } from 'firebase/firestore';
+import { collection, addDoc } from 'firebase/firestore';
 
 const CadastroMotorista = () => {
   const [form, setForm] = useState({
@@ -9,21 +9,11 @@ const CadastroMotorista = () => {
     whatsapp: '',
     cidade: '',
     cnhCategoria: '',
-    temMopp: 'Não',
-    carretaId: ''
+    temMopp: 'Não'
   });
 
-  const [carretasDisponiveis, setCarretasDisponiveis] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-
-  useEffect(() => {
-    const q = query(collection(db, 'carretas'), where('motoristaId', '==', null));
-    const unsub = onSnapshot(q, (snap) => {
-      setCarretasDisponiveis(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    return () => unsub();
-  }, []);
 
   const formatCPF = (value: string) => {
     return value
@@ -51,7 +41,7 @@ const CadastroMotorista = () => {
 
     setLoading(true);
     try {
-      const novoMotoristaRef = await addDoc(collection(db, 'motoristas'), {
+      await addDoc(collection(db, 'motoristas'), {
         nome: form.nome,
         cpf: form.cpf,
         whatsapp: form.whatsapp,
@@ -61,29 +51,17 @@ const CadastroMotorista = () => {
         createdAt: new Date().toISOString()
       });
 
-      if (form.carretaId) {
-        const carretaRef = doc(db, 'carretas', form.carretaId);
-        await updateDoc(carretaRef, {
-          motoristaId: novoMotoristaRef.id,
-          motoristaNome: form.nome
-        });
-      }
-
       setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
-      
+      setTimeout(() => setSuccess(false), 4000);
+
+      // Limpar formulário
       setForm({
-        nome: '',
-        cpf: '',
-        whatsapp: '',
-        cidade: '',
-        cnhCategoria: '',
-        temMopp: 'Não',
-        carretaId: ''
+        nome: '', cpf: '', whatsapp: '', cidade: '',
+        cnhCategoria: '', temMopp: 'Não'
       });
     } catch (error) {
       console.error(error);
-      alert("Erro ao cadastrar motorista.");
+      alert("Erro ao cadastrar motorista. Tente novamente.");
     } finally {
       setLoading(false);
     }
@@ -93,7 +71,7 @@ const CadastroMotorista = () => {
     <div style={containerStyle}>
       <div style={headerStyle}>
         <h1 style={titleStyle}>🚛 Cadastro de Motorista</h1>
-        <p style={subtitleStyle}>Preencha os dados abaixo para adicionar um novo motorista</p>
+        <p style={subtitleStyle}>Adicione um novo motorista à sua frota</p>
       </div>
 
       {success && (
@@ -102,121 +80,97 @@ const CadastroMotorista = () => {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} style={formCardStyle}>
-        <div style={twoColumnGrid}>
-          <div style={inputGroupStyle}>
-            <label style={labelStyle}>
-              Nome Completo <span style={requiredStar}>*</span>
-            </label>
-            <input
-              type="text"
-              value={form.nome}
-              onChange={(e) => setForm({ ...form, nome: e.target.value })}
-              style={inputStyle}
-              placeholder="Digite o nome completo"
-              required
-            />
+      <div style={formCardStyle}>
+        <form onSubmit={handleSubmit}>
+          <div style={twoColumnGrid}>
+            <div style={inputGroupStyle}>
+              <label style={labelStyle}>Nome Completo <span style={required}>*</span></label>
+              <input
+                type="text"
+                value={form.nome}
+                onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                style={inputStyle}
+                placeholder="Ex: João Silva Santos"
+                required
+              />
+            </div>
+
+            <div style={inputGroupStyle}>
+              <label style={labelStyle}>CPF <span style={required}>*</span></label>
+              <input
+                type="text"
+                value={form.cpf}
+                onChange={(e) => setForm({ ...form, cpf: formatCPF(e.target.value) })}
+                placeholder="000.000.000-00"
+                style={inputStyle}
+                required
+              />
+            </div>
+
+            <div style={inputGroupStyle}>
+              <label style={labelStyle}>WhatsApp</label>
+              <input
+                type="text"
+                value={form.whatsapp}
+                onChange={(e) => setForm({ ...form, whatsapp: formatWhatsApp(e.target.value) })}
+                placeholder="(11) 98765-4321"
+                style={inputStyle}
+              />
+            </div>
+
+            <div style={inputGroupStyle}>
+              <label style={labelStyle}>Cidade</label>
+              <input
+                type="text"
+                value={form.cidade}
+                onChange={(e) => setForm({ ...form, cidade: e.target.value })}
+                placeholder="Ex: Araraquara - SP"
+                style={inputStyle}
+              />
+            </div>
+
+            <div style={inputGroupStyle}>
+              <label style={labelStyle}>Categoria CNH</label>
+              <input
+                type="text"
+                value={form.cnhCategoria}
+                onChange={(e) => setForm({ ...form, cnhCategoria: e.target.value.toUpperCase() })}
+                placeholder="A, B, C, D ou E"
+                style={inputStyle}
+                maxLength={2}
+              />
+            </div>
+
+            <div style={inputGroupStyle}>
+              <label style={labelStyle}>Possui MOPP?</label>
+              <select 
+                value={form.temMopp} 
+                onChange={(e) => setForm({ ...form, temMopp: e.target.value })} 
+                style={selectStyle}
+              >
+                <option value="Não">❌ Não possui</option>
+                <option value="Sim">✅ Possui MOPP</option>
+              </select>
+            </div>
           </div>
 
-          <div style={inputGroupStyle}>
-            <label style={labelStyle}>
-              CPF <span style={requiredStar}>*</span>
-            </label>
-            <input
-              type="text"
-              value={form.cpf}
-              onChange={(e) => setForm({ ...form, cpf: formatCPF(e.target.value) })}
-              placeholder="000.000.000-00"
-              style={inputStyle}
-              required
-            />
-          </div>
-
-          <div style={inputGroupStyle}>
-            <label style={labelStyle}>WhatsApp</label>
-            <input
-              type="text"
-              value={form.whatsapp}
-              onChange={(e) => setForm({ ...form, whatsapp: formatWhatsApp(e.target.value) })}
-              placeholder="(00) 00000-0000"
-              style={inputStyle}
-            />
-          </div>
-
-          <div style={inputGroupStyle}>
-            <label style={labelStyle}>Cidade</label>
-            <input
-              type="text"
-              value={form.cidade}
-              onChange={(e) => setForm({ ...form, cidade: e.target.value })}
-              placeholder="Digite a cidade"
-              style={inputStyle}
-            />
-          </div>
-
-          <div style={inputGroupStyle}>
-            <label style={labelStyle}>Categoria CNH</label>
-            <input
-              type="text"
-              value={form.cnhCategoria}
-              onChange={(e) => setForm({ ...form, cnhCategoria: e.target.value.toUpperCase() })}
-              placeholder="Ex: A, B, C, D, E"
-              style={inputStyle}
-              maxLength={2}
-            />
-          </div>
-
-          <div style={inputGroupStyle}>
-            <label style={labelStyle}>Possui MOPP?</label>
-            <select 
-              value={form.temMopp} 
-              onChange={(e) => setForm({ ...form, temMopp: e.target.value })} 
-              style={selectStyle}
-            >
-              <option value="Não">❌ Não</option>
-              <option value="Sim">✅ Sim</option>
-            </select>
-          </div>
-        </div>
-
-        <div style={inputGroupStyle}>
-          <label style={labelStyle}>Associar Carreta (opcional)</label>
-          <select 
-            value={form.carretaId} 
-            onChange={(e) => setForm({ ...form, carretaId: e.target.value })} 
-            style={selectStyle}
+          <button 
+            type="submit" 
+            disabled={loading} 
+            style={loading ? disabledButton : submitButton}
           >
-            <option value="">📦 Nenhuma carreta</option>
-            {carretasDisponiveis.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.placa} — {c.tipo} ({c.qtdPaletes} paletes)
-              </option>
-            ))}
-          </select>
-          {carretasDisponiveis.length === 0 && (
-            <p style={helperTextStyle}>ℹ️ Nenhuma carreta disponível no momento</p>
-          )}
-        </div>
-
-        <button type="submit" disabled={loading} style={loading ? buttonDisabledStyle : saveButton}>
-          {loading ? (
-            <>
-              <span style={spinnerStyle}></span>
-              Cadastrando Motorista...
-            </>
-          ) : (
-            '📝 Cadastrar Motorista'
-          )}
-        </button>
-      </form>
+            {loading ? 'Cadastrando Motorista...' : 'Cadastrar Motorista'}
+          </button>
+        </form>
+      </div>
     </div>
   );
 };
 
-// ==================== ESTILOS MODERNOS ====================
+/* ==================== ESTILOS ==================== */
 const containerStyle: React.CSSProperties = {
   minHeight: '100vh',
-  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  background: '#f8fafc',
   padding: '40px 20px',
   display: 'flex',
   flexDirection: 'column',
@@ -225,161 +179,107 @@ const containerStyle: React.CSSProperties = {
 
 const headerStyle: React.CSSProperties = {
   textAlign: 'center',
-  marginBottom: '30px'
+  marginBottom: '40px'
 };
 
 const titleStyle: React.CSSProperties = {
-  color: 'white',
-  fontSize: '32px',
+  fontSize: '34px',
   fontWeight: '700',
-  marginBottom: '10px',
-  textShadow: '2px 2px 4px rgba(0,0,0,0.1)'
+  color: '#1e2937',
+  marginBottom: '8px'
 };
 
 const subtitleStyle: React.CSSProperties = {
-  color: 'rgba(255,255,255,0.9)',
-  fontSize: '16px'
+  fontSize: '17px',
+  color: '#64748b'
 };
 
 const formCardStyle: React.CSSProperties = {
   background: 'white',
-  padding: '40px',
+  padding: '50px 45px',
   borderRadius: '24px',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-  maxWidth: '900px',
-  width: '100%',
-  transition: 'transform 0.3s ease'
+  boxShadow: '0 20px 60px rgba(0,0,0,0.08)',
+  maxWidth: '820px',
+  width: '100%'
 };
 
 const twoColumnGrid: React.CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '1fr 1fr',
-  gap: '20px',
-  marginBottom: '10px'
+  gap: '26px',
+  marginBottom: '20px'
 };
 
-const inputGroupStyle: React.CSSProperties = {
-  marginBottom: '0'
-};
+const inputGroupStyle: React.CSSProperties = { marginBottom: '26px' };
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
   marginBottom: '8px',
   fontWeight: '600',
   color: '#374151',
-  fontSize: '14px'
+  fontSize: '15px'
 };
 
-const requiredStar: React.CSSProperties = {
-  color: '#ef4444'
-};
+const required: React.CSSProperties = { color: '#ef4444' };
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '12px 16px',
-  border: '2px solid #e5e7eb',
-  borderRadius: '12px',
-  fontSize: '14px',
-  transition: 'all 0.3s ease',
-  outline: 'none',
-  fontFamily: 'inherit'
-};
-
-const selectStyle: React.CSSProperties = {
-  ...inputStyle,
-  cursor: 'pointer',
-  backgroundColor: 'white'
-};
-
-const helperTextStyle: React.CSSProperties = {
-  fontSize: '12px',
-  color: '#6b7280',
-  marginTop: '8px'
-};
-
-const saveButton: React.CSSProperties = {
-  width: '100%',
-  padding: '14px',
-  backgroundColor: '#667eea',
-  color: 'white',
-  border: 'none',
+  padding: '14px 18px',
+  border: '2px solid #e2e8f0',
   borderRadius: '12px',
   fontSize: '16px',
-  fontWeight: '600',
-  cursor: 'pointer',
-  marginTop: '30px',
-  transition: 'all 0.3s ease',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: '10px'
+  transition: 'all 0.3s'
 };
 
-const buttonDisabledStyle: React.CSSProperties = {
-  ...saveButton,
-  backgroundColor: '#9ca3af',
-  cursor: 'not-allowed',
-  opacity: 0.7
+const selectStyle: React.CSSProperties = { ...inputStyle, cursor: 'pointer', backgroundColor: 'white' };
+
+const submitButton: React.CSSProperties = {
+  width: '100%',
+  padding: '16px',
+  background: '#3b82f6',
+  color: 'white',
+  border: 'none',
+  borderRadius: '14px',
+  fontSize: '17px',
+  fontWeight: '600',
+  cursor: 'pointer',
+  marginTop: '20px',
+  transition: 'all 0.3s ease'
+};
+
+const disabledButton: React.CSSProperties = {
+  ...submitButton,
+  background: '#9ca3af',
+  cursor: 'not-allowed'
 };
 
 const successToastStyle: React.CSSProperties = {
   position: 'fixed',
-  top: '20px',
-  right: '20px',
-  backgroundColor: '#10b981',
+  top: '30px',
+  right: '30px',
+  background: '#10b981',
   color: 'white',
-  padding: '12px 24px',
-  borderRadius: '12px',
+  padding: '16px 28px',
+  borderRadius: '14px',
   fontWeight: '600',
-  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-  zIndex: 1000,
-  animation: 'slideIn 0.3s ease'
+  boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
+  zIndex: 2000
 };
 
-const spinnerStyle: React.CSSProperties = {
-  display: 'inline-block',
-  width: '16px',
-  height: '16px',
-  border: '2px solid white',
-  borderTop: '2px solid transparent',
-  borderRadius: '50%',
-  animation: 'spin 0.6s linear infinite'
-};
-
-// Adicione isso ao seu CSS global ou crie um componente de estilo
-const globalStyles = `
-  @keyframes slideIn {
-    from {
-      transform: translateX(100%);
-      opacity: 0;
-    }
-    to {
-      transform: translateX(0);
-      opacity: 1;
-    }
-  }
-  
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-  
-  input:focus, select:focus {
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-  }
-  
-  button:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
-  }
-`;
-
-// Injetar estilos globais
+// Animações globais
 if (typeof document !== 'undefined') {
-  const styleSheet = document.createElement("style");
-  styleSheet.textContent = globalStyles;
-  document.head.appendChild(styleSheet);
+  const style = document.createElement('style');
+  style.textContent = `
+    input:focus, select:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+    }
+    button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 25px rgba(59, 130, 246, 0.35);
+    }
+  `;
+  document.head.appendChild(style);
 }
 
 export default CadastroMotorista;
