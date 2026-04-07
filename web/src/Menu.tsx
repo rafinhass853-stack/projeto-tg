@@ -7,6 +7,7 @@ import ListaVeiculos from './ListaVeiculos';
 import CadastroCarretas from './CadastroCarretas';
 import ListaCarretas from './ListaCarretas';
 import MenuMotorista from './MenuMotorista';
+import LançarCarga from './LançarCarga';
 
 const Menu = () => {
   const [activeTab, setActiveTab] = useState<'motoristas-cad' | 'motoristas-list' | 'veiculos-cad' | 'veiculos-list' | 'carretas-cad' | 'carretas-list'>('motoristas-list');
@@ -28,28 +29,39 @@ const Menu = () => {
   };
 
   const menuItems = [
-    {
-      section: 'Motoristas',
-      items: [
-        { id: 'motoristas-cad', label: 'Cadastrar Motorista', icon: '👤', color: '#3b82f6' },
-        { id: 'motoristas-list', label: 'Motoristas Cadastrados', icon: '📋', color: '#3b82f6' }
-      ]
-    },
-    {
-      section: 'Carretas',
-      items: [
-        { id: 'carretas-cad', label: 'Cadastrar Carreta', icon: '🚛', color: '#10b981' },
-        { id: 'carretas-list', label: 'Carretas Cadastradas', icon: '📦', color: '#10b981' }
-      ]
-    },
-    {
-      section: 'Veículos',
-      items: [
-        { id: 'veiculos-cad', label: 'Cadastrar Veículo', icon: '🚗', color: '#f59e0b' },
-        { id: 'veiculos-list', label: 'Veículos Cadastrados', icon: '🚙', color: '#f59e0b' }
-      ]
-    }
-  ];
+  {
+    section: 'Motoristas',
+    items: [
+      { id: 'motoristas-cad', label: 'Cadastrar Motorista', icon: '👤', color: '#3b82f6' },
+      { id: 'motoristas-list', label: 'Motoristas Cadastrados', icon: '📋', color: '#3b82f6' }
+    ]
+  },
+  {
+    section: 'Carretas',
+    items: [
+      { id: 'carretas-cad', label: 'Cadastrar Carreta', icon: '🚛', color: '#10b981' },
+      { id: 'carretas-list', label: 'Carretas Cadastradas', icon: '📦', color: '#10b981' }
+    ]
+  },
+  {
+    section: 'Veículos',
+    items: [
+      { id: 'veiculos-cad', label: 'Cadastrar Veículo', icon: '🚗', color: '#f59e0b' },
+      { id: 'veiculos-list', label: 'Veículos Cadastrados', icon: '🚙', color: '#f59e0b' }
+    ]
+  },
+  {
+    section: 'Cargas',
+    items: [
+      { 
+        id: 'lancar-carga', 
+        label: 'Lançar Carga', 
+        icon: '📦', 
+        color: '#8b5cf6' 
+      }
+    ]
+  }
+];
 
   const getCurrentTitle = () => {
     for (const section of menuItems) {
@@ -149,6 +161,7 @@ const Menu = () => {
             {activeTab === 'carretas-list' && <ListaCarretas />}
             {activeTab === 'veiculos-cad' && <CadastroVeiculo />}
             {activeTab === 'veiculos-list' && <ListaVeiculos />}
+            {activeTab === 'lancar-carga' && <LançarCarga />}
           </div>
         </div>
       </div>
