@@ -14,6 +14,7 @@ interface Motorista {
   cnhCategoria?: string;
   temMopp?: string;
   email?: string;
+  senha?: string; // Campo para senha de acesso ao app
   telefone?: string;
   fotoPerfilUrl?: string;
   createdAt?: string;
@@ -73,12 +74,18 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
         fotoUrlFinal = await getDownloadURL(storageRef);
       }
       const motoristaRef = doc(db, 'motoristas', motorista.id);
-      await updateDoc(motoristaRef, { ...editForm, fotoPerfilUrl: fotoUrlFinal });
+      
+      // Salva todos os dados, incluindo e-mail e senha para o futuro app
+      await updateDoc(motoristaRef, { 
+        ...editForm, 
+        fotoPerfilUrl: fotoUrlFinal 
+      });
+      
       setMotorista({ ...editForm, fotoPerfilUrl: fotoUrlFinal });
       setShowEditModal(false);
       setNovaFoto(null);
       setPreviewUrl(null);
-      alert('✅ Motorista atualizado com sucesso!');
+      alert('✅ Motorista e credenciais de acesso atualizados com sucesso!');
     } catch (error) {
       console.error(error);
       alert('❌ Erro ao atualizar motorista');
@@ -118,6 +125,7 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
             <div>📱 WhatsApp: <strong>{motorista.whatsapp || 'Não informado'}</strong></div>
             <div>📍 Cidade: <strong>{motorista.cidade || 'Não informada'}</strong></div>
             <div>🪪 CNH: <strong>{motorista.cnhCategoria || '—'}</strong></div>
+            <div>📧 Login App: <strong>{motorista.email || 'Não configurado'}</strong></div>
           </div>
         </div>
       </div>
@@ -150,15 +158,51 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
       {showEditModal && editForm && (
         <div style={modalOverlay} onClick={() => setShowEditModal(false)}>
           <div style={modalContent} onClick={e => e.stopPropagation()}>
-            <h2>Editar Motorista</h2>
-            <div style={formGrid}>
-              <div><label>Nome Completo *</label><input type="text" value={editForm.nome} onChange={e => setEditForm({...editForm, nome: e.target.value})} style={inputField} /></div>
-              <div><label>CPF *</label><input type="text" value={editForm.cpf} onChange={e => setEditForm({...editForm, cpf: e.target.value})} style={inputField} /></div>
-              <div><label>WhatsApp</label><input type="text" value={editForm.whatsapp || ''} onChange={e => setEditForm({...editForm, whatsapp: e.target.value})} style={inputField} /></div>
-              <div><label>Cidade</label><input type="text" value={editForm.cidade || ''} onChange={e => setEditForm({...editForm, cidade: e.target.value})} style={inputField} /></div>
-              <div><label>CNH Categoria</label><input type="text" value={editForm.cnhCategoria || ''} onChange={e => setEditForm({...editForm, cnhCategoria: e.target.value.toUpperCase()})} style={inputField} maxLength={2} /></div>
-              <div><label>Possui MOPP?</label><select value={editForm.temMopp || 'Não'} onChange={e => setEditForm({...editForm, temMopp: e.target.value})} style={inputField}><option value="Não">Não</option><option value="Sim">Sim</option></select></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0 }}>Editar Motorista</h2>
+              <button onClick={() => setShowEditModal(false)} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer' }}>×</button>
             </div>
+            
+            <div style={formSectionTitle}>Dados Pessoais</div>
+            <div style={formGrid}>
+              <div><label style={labelStyle}>Nome Completo *</label><input type="text" value={editForm.nome} onChange={e => setEditForm({...editForm, nome: e.target.value})} style={inputField} /></div>
+              <div><label style={labelStyle}>CPF *</label><input type="text" value={editForm.cpf} onChange={e => setEditForm({...editForm, cpf: e.target.value})} style={inputField} /></div>
+              <div><label style={labelStyle}>WhatsApp</label><input type="text" value={editForm.whatsapp || ''} onChange={e => setEditForm({...editForm, whatsapp: e.target.value})} style={inputField} /></div>
+              <div><label style={labelStyle}>Cidade</label><input type="text" value={editForm.cidade || ''} onChange={e => setEditForm({...editForm, cidade: e.target.value})} style={inputField} /></div>
+              <div><label style={labelStyle}>CNH Categoria</label><input type="text" value={editForm.cnhCategoria || ''} onChange={e => setEditForm({...editForm, cnhCategoria: e.target.value.toUpperCase()})} style={inputField} maxLength={2} /></div>
+              <div><label style={labelStyle}>Possui MOPP?</label><select value={editForm.temMopp || 'Não'} onChange={e => setEditForm({...editForm, temMopp: e.target.value})} style={inputField}><option value="Não">Não</option><option value="Sim">Sim</option></select></div>
+            </div>
+
+            <div style={formSectionTitle}>Acesso ao Aplicativo (Login)</div>
+            <div style={formGrid}>
+              <div>
+                <label style={labelStyle}>E-mail de Login</label>
+                <input 
+                  type="email" 
+                  placeholder="exemplo@motorista.com"
+                  value={editForm.email || ''} 
+                  onChange={e => setEditForm({...editForm, email: e.target.value})} 
+                  style={inputField} 
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>Senha de Acesso</label>
+                <input 
+                  type="text" 
+                  placeholder="Defina uma senha"
+                  value={editForm.senha || ''} 
+                  onChange={e => setEditForm({...editForm, senha: e.target.value})} 
+                  style={inputField} 
+                />
+              </div>
+            </div>
+
+            <div style={{ marginTop: '30px' }}>
+              <label style={labelStyle}>Foto de Perfil</label>
+              <input type="file" accept="image/*" onChange={e => e.target.files && setNovaFoto(e.target.files[0])} style={{ marginTop: '10px', display: 'block' }} />
+              {previewUrl && <img src={previewUrl} alt="Preview" style={{ width: '100px', height: '100px', borderRadius: '50%', marginTop: '15px', objectFit: 'cover', border: '2px solid #3b82f6' }} />}
+            </div>
+
             <div style={modalActions}>
               <button onClick={() => setShowEditModal(false)} style={cancelBtn}>Cancelar</button>
               <button onClick={handleSaveEdit} style={saveBtn} disabled={uploading}>{uploading ? 'Salvando...' : 'Salvar Alterações'}</button>
@@ -179,19 +223,19 @@ const menuItems = [
   { id: 'hodometro', title: "Hodômetro", icon: "🔢", desc: "Controle de quilometragem", color: "#06b6d4", bgColor: "#ecfeff" },
 ];
 
-// Estilos (Mantidos do original)
+// Estilos
 const containerStyle: React.CSSProperties = { minHeight: '100vh', background: 'linear-gradient(135deg, #f8fafc, #e0e7ff)', padding: '30px 20px' };
-const voltarBtn: React.CSSProperties = { padding: '10px 20px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '12px', cursor: 'pointer', marginBottom: '20px' };
+const voltarBtn: React.CSSProperties = { padding: '10px 20px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '12px', cursor: 'pointer', marginBottom: '20px', fontWeight: 600 };
 const headerStyle: React.CSSProperties = { display: 'flex', gap: '40px', background: 'white', padding: '40px', borderRadius: '24px', boxShadow: '0 15px 40px rgba(0,0,0,0.1)', maxWidth: '1200px', margin: '0 auto 40px' };
 const fotoWrapper: React.CSSProperties = { position: 'relative', width: '160px', height: '160px' };
 const fotoStyle: React.CSSProperties = { width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', border: '5px solid white' };
 const initialsStyle: React.CSSProperties = { ...fotoStyle, background: 'linear-gradient(135deg, #3b82f6, #1e3a8a)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '48px', color: 'white', fontWeight: 'bold' };
-const moppBadge: React.CSSProperties = { position: 'absolute', bottom: '0', right: '0', background: 'white', padding: '6px 14px', borderRadius: '20px', fontSize: '13px', boxShadow: '0 4px 10px rgba(0,0,0,0.15)' };
+const moppBadge: React.CSSProperties = { position: 'absolute', bottom: '0', right: '0', background: 'white', padding: '6px 14px', borderRadius: '20px', fontSize: '13px', boxShadow: '0 4px 10px rgba(0,0,0,0.15)', fontWeight: 700 };
 const infoSection: React.CSSProperties = { flex: 1 };
-const nomeTitle: React.CSSProperties = { fontSize: '34px', fontWeight: '700', margin: '0 0 8px 0' };
+const nomeTitle: React.CSSProperties = { fontSize: '34px', fontWeight: '700', margin: '0 0 8px 0', color: '#1e293b' };
 const cpfText: React.CSSProperties = { fontSize: '16px', color: '#64748b', margin: '0 0 20px 0' };
-const detailsGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', fontSize: '15px' };
-const editMainButton: React.CSSProperties = { padding: '8px 16px', background: '#f1f5f9', border: 'none', borderRadius: '10px', cursor: 'pointer', fontSize: '14px', fontWeight: 600, color: '#475569' };
+const detailsGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', fontSize: '15px', color: '#475569' };
+const editMainButton: React.CSSProperties = { padding: '10px 20px', background: '#f1f5f9', border: 'none', borderRadius: '12px', cursor: 'pointer', fontSize: '14px', fontWeight: 700, color: '#4f46e5', transition: 'all 0.2s' };
 const menuTitle: React.CSSProperties = { textAlign: 'center', fontSize: '28px', fontWeight: 800, color: '#1e293b', marginBottom: '30px' };
 const cardsGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '25px', maxWidth: '1200px', margin: '0 auto' };
 const menuCardStyle: React.CSSProperties = { background: 'white', padding: '30px', borderRadius: '24px', cursor: 'pointer', transition: 'all 0.3s ease', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' };
@@ -200,12 +244,14 @@ const cardTitle: React.CSSProperties = { fontSize: '20px', fontWeight: 700, marg
 const cardDesc: React.CSSProperties = { fontSize: '14px', color: '#64748b', margin: 0, lineHeight: '1.5' };
 const loadingStyle: React.CSSProperties = { textAlign: 'center', padding: '100px', fontSize: '18px', color: '#64748b' };
 const errorStyle: React.CSSProperties = { textAlign: 'center', padding: '100px', fontSize: '18px', color: '#ef4444' };
-const modalOverlay: React.CSSProperties = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 };
-const modalContent: React.CSSProperties = { background: 'white', padding: '40px', borderRadius: '24px', width: '90%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto' };
-const inputField: React.CSSProperties = { width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', marginTop: '5px' };
-const formGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '30px' };
-const modalActions: React.CSSProperties = { display: 'flex', justifyContent: 'flex-end', gap: '15px' };
-const cancelBtn: React.CSSProperties = { padding: '12px 24px', borderRadius: '12px', border: '1px solid #cbd5e1', background: 'white', cursor: 'pointer' };
-const saveBtn: React.CSSProperties = { padding: '12px 24px', borderRadius: '12px', border: 'none', background: '#3b82f6', color: 'white', cursor: 'pointer', fontWeight: 600 };
+const modalOverlay: React.CSSProperties = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 };
+const modalContent: React.CSSProperties = { background: 'white', padding: '40px', borderRadius: '28px', width: '90%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' };
+const labelStyle: React.CSSProperties = { fontSize: '13px', fontWeight: 700, color: '#475569', marginBottom: '5px', display: 'block' };
+const inputField: React.CSSProperties = { width: '100%', padding: '12px 16px', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '5px', fontSize: '15px', outline: 'none' };
+const formSectionTitle: React.CSSProperties = { fontSize: '16px', fontWeight: 800, color: '#1e293b', margin: '25px 0 15px 0', paddingBottom: '8px', borderBottom: '2px solid #f1f5f9' };
+const formGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' };
+const modalActions: React.CSSProperties = { display: 'flex', justifyContent: 'flex-end', gap: '15px', marginTop: '40px' };
+const cancelBtn: React.CSSProperties = { padding: '12px 24px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontWeight: 600, color: '#64748b' };
+const saveBtn: React.CSSProperties = { padding: '12px 32px', borderRadius: '12px', border: 'none', background: '#3b82f6', color: 'white', cursor: 'pointer', fontWeight: 700, boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)' };
 
 export default MenuMotorista;

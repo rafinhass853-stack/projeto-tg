@@ -1,23 +1,17 @@
 import React, { useState } from 'react';
 import { auth } from './firebase';
-import CadastroMotorista from './CadastroMotorista';
 import ListaMotoristas from './ListaMotoristas';
-import CadastroVeiculo from './CadastroVeiculo';
 import ListaVeiculos from './ListaVeiculos';
-import CadastroCarretas from './CadastroCarretas';
 import ListaCarretas from './ListaCarretas';
 import MenuMotorista from './MenuMotorista';
 import LançarCarga from './LançarCarga';
 
 const Menu = () => {
   const [activeTab, setActiveTab] = useState<
-    'motoristas-cad' | 
     'motoristas-list' | 
-    'veiculos-cad' | 
     'veiculos-list' | 
-    'carretas-cad' | 
     'carretas-list' |
-    'lancar-carga'                    // ← Adicionado aqui
+    'lancar-carga'
   >('motoristas-list');
 
   const [selectedMotoristaId, setSelectedMotoristaId] = useState<string | null>(null);
@@ -37,25 +31,23 @@ const Menu = () => {
     setSelectedMotoristaId(null);
   };
 
+  // AJUSTE: Removidos os itens de "Cadastrar" conforme solicitado
   const menuItems = [
     {
       section: 'Motoristas',
       items: [
-        { id: 'motoristas-cad', label: 'Cadastrar Motorista', icon: '👤', color: '#3b82f6' },
         { id: 'motoristas-list', label: 'Motoristas Cadastrados', icon: '📋', color: '#3b82f6' }
       ]
     },
     {
       section: 'Carretas',
       items: [
-        { id: 'carretas-cad', label: 'Cadastrar Carreta', icon: '🚛', color: '#10b981' },
         { id: 'carretas-list', label: 'Carretas Cadastradas', icon: '📦', color: '#10b981' }
       ]
     },
     {
       section: 'Veículos',
       items: [
-        { id: 'veiculos-cad', label: 'Cadastrar Veículo', icon: '🚗', color: '#f59e0b' },
         { id: 'veiculos-list', label: 'Veículos Cadastrados', icon: '🚙', color: '#f59e0b' }
       ]
     },
@@ -158,18 +150,15 @@ const Menu = () => {
         {/* Área de Conteúdo */}
         <div style={contentAreaStyle}>
           <div style={contentWrapperStyle}>
-            {activeTab === 'motoristas-cad' && <CadastroMotorista />}
             {activeTab === 'motoristas-list' && (
               selectedMotoristaId ? 
                 <MenuMotorista motoristaId={selectedMotoristaId} onVoltar={handleVoltarParaLista} /> 
                 : 
                 <ListaMotoristas onSelectMotorista={handleSelectMotorista} />
             )}
-            {activeTab === 'carretas-cad' && <CadastroCarretas />}
             {activeTab === 'carretas-list' && <ListaCarretas />}
-            {activeTab === 'veiculos-cad' && <CadastroVeiculo />}
             {activeTab === 'veiculos-list' && <ListaVeiculos />}
-            {activeTab === 'lancar-carga' && <LançarCarga />}   {/* ← Corrigido */}
+            {activeTab === 'lancar-carga' && <LançarCarga />}
           </div>
         </div>
       </div>
@@ -178,8 +167,6 @@ const Menu = () => {
 };
 
 // ==================== ESTILOS ====================
-// (Seus estilos permanecem iguais - não alterei nada aqui)
-
 const dashboardStyle: React.CSSProperties = {
   display: 'flex',
   minHeight: '100vh',

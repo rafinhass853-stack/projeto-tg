@@ -38,7 +38,9 @@ import {
   ChevronDown,
   Clock,
   TrendingUp,
-  Edit3
+  Edit3,
+  Layers,
+  Download
 } from 'lucide-react';
 
 interface CargaData {
@@ -88,7 +90,9 @@ const GerenciadorDeCargas: React.FC = () => {
   const [filtroCidadeColeta, setFiltroCidadeColeta] = useState('');
   const [filtroCidadeEntrega, setFiltroCidadeEntrega] = useState('');
   const [filtroCliente, setFiltroCliente] = useState('');
+  const [filtroMotorista, setFiltroMotorista] = useState(''); // NOVO FILTRO
   const [filtroQuantidadeVeiculos, setFiltroQuantidadeVeiculos] = useState('');
+  const [mostrarFinalizadas, setMostrarFinalizadas] = useState(false); // NOVO ESTADO
 
   useEffect(() => {
     const q = query(collection(db, "cargas_programadas"), orderBy("criadoEm", "desc"));
@@ -113,6 +117,9 @@ const GerenciadorDeCargas: React.FC = () => {
   // Lógica de Filtragem
   const cargasFiltradas = useMemo(() => {
     let resultado = listaCargas.filter(carga => {
+      // Ajuste 1: Não aparecer finalizadas por padrão
+      if (!mostrarFinalizadas && carga.status === 'finalizada') return false;
+
       const dataColetaFormatada = filtroDataColeta ? filtroDataColeta.split('-').reverse().join('/') : '';
       const dataEntregaFormatada = filtroDataEntrega ? filtroDataEntrega.split('-').reverse().join('/') : '';
       const bateDataColeta = !filtroDataColeta || (carga.coletaData && carga.coletaData.includes(dataColetaFormatada));
@@ -122,34 +129,57 @@ const GerenciadorDeCargas: React.FC = () => {
       const bateCliente = !filtroCliente || 
         (carga.coletaLocal && carga.coletaLocal.toLowerCase().includes(filtroCliente.toLowerCase())) ||
         (carga.entregaLocal && carga.entregaLocal.toLowerCase().includes(filtroCliente.toLowerCase()));
-      return bateDataColeta && bateDataEntrega && bateCidadeColeta && bateCidadeEntrega && bateCliente;
+      
+      // Ajuste 2: Filtro por motorista
+      const bateMotorista = !filtroMotorista || (carga.motorista && carga.motorista.toLowerCase().includes(filtroMotorista.toLowerCase()));
+
+      return bateDataColeta && bateDataEntrega && bateCidadeColeta && bateCidadeEntrega && bateCliente && bateMotorista;
     });
+
     if (filtroQuantidadeVeiculos && filtroQuantidadeVeiculos !== 'todos') {
       const limite = parseInt(filtroQuantidadeVeiculos);
       if (!isNaN(limite)) resultado = resultado.slice(0, limite);
     }
     return resultado;
-  }, [listaCargas, filtroDataColeta, filtroDataEntrega, filtroCidadeColeta, filtroCidadeEntrega, filtroCliente, filtroQuantidadeVeiculos]);
+  }, [listaCargas, filtroDataColeta, filtroDataEntrega, filtroCidadeColeta, filtroCidadeEntrega, filtroCliente, filtroMotorista, filtroQuantidadeVeiculos, mostrarFinalizadas]);
 
-  // Estatísticas
+  // Ajuste 4: Agrupamento de Cargas
+  const cargasAgrupadas = useMemo(() => {
+    const grupos: { [key: string]: CargaData[] } = {};
+    cargasFiltradas.forEach(carga => {
+      const chave = `${carga.coletaCidade || 'Sem Origem'} (${carga.coletaLocal || 'Sem Cliente'})`;
+      if (!grupos[chave]) grupos[chave] = [];
+      grupos[chave].push(carga);
+    });
+    return grupos;
+  }, [cargasFiltradas]);
+
+  // Estatísticas (Relatório Comercial Melhorado)
   const stats = useMemo(() => {
     const cidadesColeta = new Map<string, number>();
     const cidadesEntrega = new Map<string, number>();
     let pesoTotal = 0;
     const clientesCount = new Map<string, number>();
+    const motoristasCount = new Map<string, number>();
+    
     cargasFiltradas.forEach(c => {
       if (c.coletaCidade) cidadesColeta.set(c.coletaCidade, (cidadesColeta.get(c.coletaCidade) || 0) + 1);
       if (c.entregaCidade) cidadesEntrega.set(c.entregaCidade, (cidadesEntrega.get(c.entregaCidade) || 0) + 1);
       if (c.coletaLocal) clientesCount.set(c.coletaLocal, (clientesCount.get(c.coletaLocal) || 0) + 1);
       if (c.entregaLocal) clientesCount.set(c.entregaLocal, (clientesCount.get(c.entregaLocal) || 0) + 1);
-      pesoTotal += parseFloat(c.peso?.replace(/[^\d]/g, '')) || 0;
+      if (c.motorista) motoristasCount.set(c.motorista, (motoristasCount.get(c.motorista) || 0) + 1);
+      
+      const pesoLimpo = parseFloat(c.peso?.replace(/[^\d,]/g, '').replace(',', '.')) || 0;
+      pesoTotal += pesoLimpo;
     });
+
     return {
       totalVeiculos: cargasFiltradas.length,
-      pesoTotal: pesoTotal.toLocaleString('pt-BR'),
+      pesoTotal: pesoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
       distribuicaoColeta: Array.from(cidadesColeta.entries()).sort((a, b) => b[1] - a[1]),
       distribuicaoEntrega: Array.from(cidadesEntrega.entries()).sort((a, b) => b[1] - a[1]),
-      clientesTop: Array.from(clientesCount.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5)
+      clientesTop: Array.from(clientesCount.entries()).sort((a, b) => b[1] - a[1]).slice(0, 10),
+      motoristasTop: Array.from(motoristasCount.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5)
     };
   }, [cargasFiltradas]);
 
@@ -321,13 +351,29 @@ const GerenciadorDeCargas: React.FC = () => {
     formGroup: { display: 'flex', flexDirection: 'column' as const, gap: '8px' },
     formLabel: { fontSize: '13px', fontWeight: 700, color: '#475569' },
     formInput: { padding: '12px 16px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '14px', outline: 'none' },
-    formSectionTitle: { fontSize: '16px', fontWeight: 800, color: '#1e293b', margin: '24px 0 16px 0', paddingBottom: '8px', borderBottom: '2px solid #f1f5f9' }
+    formSectionTitle: { fontSize: '16px', fontWeight: 800, color: '#1e293b', margin: '24px 0 16px 0', paddingBottom: '8px', borderBottom: '2px solid #f1f5f9' },
+    groupHeader: { backgroundColor: '#f1f5f9', padding: '12px 24px', borderRadius: '16px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px', border: '1px solid #e2e8f0' },
+    groupTitle: { fontSize: '16px', fontWeight: 800, color: '#475569', margin: 0, textTransform: 'uppercase' as const, letterSpacing: '0.5px' }
   };
 
   return (
     <div style={styles.container}>
       <style>{`
-        @media print { body * { visibility: hidden; } #modal-report, #modal-report * { visibility: visible; } #modal-report { position: absolute; left: 0; top: 0; width: 100%; height: auto; overflow: visible; } .no-print { display: none !important; } @page { size: landscape; margin: 1.5cm; } table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 20px; } th, td { border: 1px solid #cbd5e1; padding: 10px 8px; text-align: left; } th { background-color: #f1f5f9; font-weight: 700; color: #1e293b; } tr:nth-child(even) { background-color: #f8fafc; } }
+        @media print { 
+          body * { visibility: hidden; } 
+          #modal-report, #modal-report * { visibility: visible; } 
+          #modal-report { position: absolute; left: 0; top: 0; width: 100%; height: auto; overflow: visible; } 
+          .no-print { display: none !important; } 
+          @page { size: landscape; margin: 1cm; } 
+          .report-container { padding: 20px; background: white; }
+          .report-header { border-bottom: 2px solid #1e293b; margin-bottom: 20px; padding-bottom: 10px; }
+          table { width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 10px; } 
+          th, td { border: 1px solid #cbd5e1; padding: 6px 4px; text-align: left; } 
+          th { background-color: #f1f5f9; font-weight: 700; color: #1e293b; } 
+          tr:nth-child(even) { background-color: #f8fafc; } 
+          .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+          .stat-box { border: 1px solid #e2e8f0; padding: 10px; border-radius: 8px; }
+        }
         * { box-sizing: border-box; }
         input:focus, select:focus, textarea:focus { border-color: #4f46e5 !important; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1) !important; }
         button:hover { transform: translateY(-1px); filter: brightness(0.98); }
@@ -347,7 +393,7 @@ const GerenciadorDeCargas: React.FC = () => {
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
             <button style={styles.btnSecondary} onClick={() => setShowModal(true)}><BarChart3 size={18} /> Relatório Comercial</button>
-            <div style={styles.badge}><TrendingUp size={14} style={{ marginRight: '6px' }} /> {listaCargas.length} Cargas Ativas</div>
+            <div style={styles.badge}><TrendingUp size={14} style={{ marginRight: '6px' }} /> {listaCargas.filter(c => c.status === 'programada').length} Cargas Ativas</div>
           </div>
         </header>
 
@@ -373,50 +419,169 @@ const GerenciadorDeCargas: React.FC = () => {
         <section className="no-print">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><ClipboardList size={24} color="#64748b" /><h3 style={{ fontSize: '22px', fontWeight: 700, margin: 0 }}>Programação Ativa</h3></div>
-            <button style={styles.btnSecondary} onClick={() => setShowFilters(!showFilters)}><Filter size={16} /> {showFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'} <ChevronDown size={14} style={{ transform: showFilters ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} /></button>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button 
+                style={{ ...styles.btnSecondary, backgroundColor: mostrarFinalizadas ? '#ecfdf5' : '#fff' }} 
+                onClick={() => setMostrarFinalizadas(!mostrarFinalizadas)}
+              >
+                {mostrarFinalizadas ? <CheckCircle2 size={16} color="#10b981" /> : <Clock size={16} />} 
+                {mostrarFinalizadas ? 'Exibindo Tudo' : 'Ocultar Finalizadas'}
+              </button>
+              <button style={styles.btnSecondary} onClick={() => setShowFilters(!showFilters)}><Filter size={16} /> {showFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'} <ChevronDown size={14} style={{ transform: showFilters ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} /></button>
+            </div>
           </div>
+          
           {showFilters && (
             <div style={styles.filterBar}>
               <div style={styles.filterGroup}><label style={styles.filterLabel}>📅 Data Coleta</label><input type="date" style={styles.filterInput} value={filtroDataColeta} onChange={(e) => setFiltroDataColeta(e.target.value)} /></div>
               <div style={styles.filterGroup}><label style={styles.filterLabel}>📅 Data Entrega</label><input type="date" style={styles.filterInput} value={filtroDataEntrega} onChange={(e) => setFiltroDataEntrega(e.target.value)} /></div>
               <div style={styles.filterGroup}><label style={styles.filterLabel}>🏙️ Cidade Coleta</label><select style={styles.filterSelect} value={filtroCidadeColeta} onChange={(e) => setFiltroCidadeColeta(e.target.value)}><option value="">Todas as Cidades</option>{cidadesColeta.map(([cidade, qtd]) => (<option key={cidade} value={cidade}>{cidade} ({qtd})</option>))}</select></div>
               <div style={styles.filterGroup}><label style={styles.filterLabel}>🏙️ Cidade Entrega</label><select style={styles.filterSelect} value={filtroCidadeEntrega} onChange={(e) => setFiltroCidadeEntrega(e.target.value)}><option value="">Todas as Cidades</option>{cidadesEntrega.map(([cidade, qtd]) => (<option key={cidade} value={cidade}>{cidade} ({qtd})</option>))}</select></div>
-              <div style={styles.filterGroup}><label style={styles.filterLabel}>🏢 Cliente</label><input type="text" style={styles.filterInput} value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)} placeholder="Digite o nome do cliente..." list="clientes-list" /><datalist id="clientes-list">{clientesUnicos.map(([cliente]) => (<option key={cliente} value={cliente} />))}</datalist></div>
-              <div style={styles.filterGroup}><label style={styles.filterLabel}>🚛 Limite Veículos</label><select style={styles.filterSelect} value={filtroQuantidadeVeiculos} onChange={(e) => setFiltroQuantidadeVeiculos(e.target.value)}><option value="todos">Todos</option><option value="5">5 veículos</option><option value="10">10 veículos</option><option value="20">20 veículos</option><option value="50">50 veículos</option></select></div>
-              {(filtroDataColeta || filtroDataEntrega || filtroCidadeColeta || filtroCidadeEntrega || filtroCliente || filtroQuantidadeVeiculos !== 'todos') && (<div style={styles.filterGroup}><label style={styles.filterLabel}>&nbsp;</label><button style={styles.clearBtn} onClick={() => { setFiltroDataColeta(''); setFiltroDataEntrega(''); setFiltroCidadeColeta(''); setFiltroCidadeEntrega(''); setFiltroCliente(''); setFiltroQuantidadeVeiculos('todos'); }}><X size={16} /> Limpar Filtros</button></div>)}
+              <div style={styles.filterGroup}><label style={styles.filterLabel}>🏢 Cliente</label><input type="text" style={styles.filterInput} value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)} placeholder="Nome do cliente..." list="clientes-list" /><datalist id="clientes-list">{clientesUnicos.map(([cliente]) => (<option key={cliente} value={cliente} />))}</datalist></div>
+              <div style={styles.filterGroup}><label style={styles.filterLabel}>👤 Motorista</label><input type="text" style={styles.filterInput} value={filtroMotorista} onChange={(e) => setFiltroMotorista(e.target.value)} placeholder="Nome do motorista..." /></div>
+              <div style={styles.filterGroup}><label style={styles.filterLabel}>🚛 Limite</label><select style={styles.filterSelect} value={filtroQuantidadeVeiculos} onChange={(e) => setFiltroQuantidadeVeiculos(e.target.value)}><option value="todos">Todos</option><option value="5">5 veíc.</option><option value="10">10 veíc.</option><option value="20">20 veíc.</option><option value="50">50 veíc.</option></select></div>
+              {(filtroDataColeta || filtroDataEntrega || filtroCidadeColeta || filtroCidadeEntrega || filtroCliente || filtroMotorista || filtroQuantidadeVeiculos !== 'todos') && (<div style={styles.filterGroup}><label style={styles.filterLabel}>&nbsp;</label><button style={styles.clearBtn} onClick={() => { setFiltroDataColeta(''); setFiltroDataEntrega(''); setFiltroCidadeColeta(''); setFiltroCidadeEntrega(''); setFiltroCliente(''); setFiltroMotorista(''); setFiltroQuantidadeVeiculos('todos'); }}><X size={16} /> Limpar</button></div>)}
             </div>
           )}
 
           <div style={{ marginBottom: '16px', padding: '12px 20px', backgroundColor: '#fff', borderRadius: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
             <div style={{ display: 'flex', gap: '16px' }}><span style={{ fontSize: '13px', color: '#64748b' }}><strong>{cargasFiltradas.length}</strong> cargas encontradas</span><span style={{ fontSize: '13px', color: '#64748b' }}><strong>{stats.pesoTotal}</strong> kg total</span></div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>{stats.clientesTop.map(([cliente, qtd]) => (<span key={cliente} style={{ fontSize: '11px', backgroundColor: '#f1f5f9', padding: '4px 12px', borderRadius: '20px', color: '#475569' }}>{cliente.substring(0, 20)}: {qtd}</span>))}</div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>{stats.clientesTop.slice(0, 3).map(([cliente, qtd]) => (<span key={cliente} style={{ fontSize: '11px', backgroundColor: '#f1f5f9', padding: '4px 12px', borderRadius: '20px', color: '#475569' }}>{cliente.substring(0, 20)}: {qtd}</span>))}</div>
           </div>
 
           {cargasFiltradas.length === 0 ? (
-            <div style={{ ...styles.card, textAlign: 'center', padding: '60px', border: '2px dashed #e2e8f0', backgroundColor: 'transparent' }}><Search size={48} color="#cbd5e1" style={{ marginBottom: '16px' }} /><p style={{ color: '#94a3b8', fontWeight: 500, fontSize: '16px' }}>Nenhuma carga encontrada com os filtros aplicados.</p><button style={{ ...styles.btnSecondary, marginTop: '16px' }} onClick={() => { setFiltroDataColeta(''); setFiltroDataEntrega(''); setFiltroCidadeColeta(''); setFiltroCidadeEntrega(''); setFiltroCliente(''); setFiltroQuantidadeVeiculos('todos'); }}>Limpar Filtros</button></div>
+            <div style={{ ...styles.card, textAlign: 'center', padding: '60px', border: '2px dashed #e2e8f0', backgroundColor: 'transparent' }}><Search size={48} color="#cbd5e1" style={{ marginBottom: '16px' }} /><p style={{ color: '#94a3b8', fontWeight: 500, fontSize: '16px' }}>Nenhuma carga encontrada com os filtros aplicados.</p><button style={{ ...styles.btnSecondary, marginTop: '16px' }} onClick={() => { setFiltroDataColeta(''); setFiltroDataEntrega(''); setFiltroCidadeColeta(''); setFiltroCidadeEntrega(''); setFiltroCliente(''); setFiltroMotorista(''); setFiltroQuantidadeVeiculos('todos'); }}>Limpar Filtros</button></div>
           ) : (
-            cargasFiltradas.map((item) => (
-              <div key={item.id} style={styles.itemCard(item.status)}>
-                <div style={styles.itemHeader}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}><div style={{ padding: '12px', borderRadius: '14px', backgroundColor: item.status === 'finalizada' ? '#ecfdf5' : '#eef2ff' }}><Truck size={24} color={item.status === 'finalizada' ? '#10b981' : '#4f46e5'} /></div><div><h4 style={{ margin: 0, fontSize: '18px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}><span style={{ backgroundColor: '#f1f5f9', padding: '2px 10px', borderRadius: '20px', fontSize: '14px' }}>DT: {item.dt || '---'}</span><span style={{ color: '#334155' }}>{item.motorista || 'Motorista não informado'}</span></h4><div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '6px' }}><span style={styles.statusBadge(item.status)}>{item.status === 'finalizada' ? '✓ Finalizada' : '⏳ Programada'}</span><span style={{ fontSize: '12px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px' }}><Clock size={12} /> Coleta: {item.coletaData || '---'}</span></div></div></div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button style={styles.actionBtn('#f1f5f9', '#4f46e5')} onClick={() => { setEditandoCarga(item); setShowEditModal(true); }}><Edit3 size={16} /> Editar</button>
-                    {item.status !== 'finalizada' && (<button style={styles.actionBtn('#ecfdf5', '#059669')} onClick={() => updateDoc(doc(db, "cargas_programadas", item.id!), { status: 'finalizada' })}><CheckCircle2 size={16} /> Finalizar</button>)}
-                    <button style={styles.actionBtn('#fef2f2', '#dc2626')} onClick={() => { if(window.confirm('Excluir esta carga?')) deleteDoc(doc(db, "cargas_programadas", item.id!)) }}><Trash2 size={16} /> Excluir</button>
+            Object.entries(cargasAgrupadas).map(([grupo, cargas]) => (
+              <div key={grupo} style={{ marginBottom: '32px' }}>
+                <div style={styles.groupHeader}>
+                  <Layers size={18} color="#64748b" />
+                  <h4 style={styles.groupTitle}>{grupo}</h4>
+                  <span style={{ marginLeft: 'auto', fontSize: '12px', fontWeight: 700, color: '#94a3b8' }}>{cargas.length} veículo(s)</span>
+                </div>
+                {cargas.map((item) => (
+                  <div key={item.id} style={styles.itemCard(item.status)}>
+                    <div style={styles.itemHeader}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}><div style={{ padding: '12px', borderRadius: '14px', backgroundColor: item.status === 'finalizada' ? '#ecfdf5' : '#eef2ff' }}><Truck size={24} color={item.status === 'finalizada' ? '#10b981' : '#4f46e5'} /></div><div><h4 style={{ margin: 0, fontSize: '18px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}><span style={{ backgroundColor: '#f1f5f9', padding: '2px 10px', borderRadius: '20px', fontSize: '14px' }}>DT: {item.dt || '---'}</span><span style={{ color: '#334155' }}>{item.motorista || 'Motorista não informado'}</span></h4><div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '6px' }}><span style={styles.statusBadge(item.status)}>{item.status === 'finalizada' ? '✓ Finalizada' : '⏳ Programada'}</span><span style={{ fontSize: '12px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px' }}><Clock size={12} /> Coleta: {item.coletaData || '---'}</span></div></div></div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button style={styles.actionBtn('#f1f5f9', '#4f46e5')} onClick={() => { setEditandoCarga(item); setShowEditModal(true); }}><Edit3 size={16} /> Editar</button>
+                        {item.status !== 'finalizada' && (<button style={styles.actionBtn('#ecfdf5', '#059669')} onClick={() => updateDoc(doc(db, "cargas_programadas", item.id!), { status: 'finalizada' })}><CheckCircle2 size={16} /> Finalizar</button>)}
+                        <button style={styles.actionBtn('#fef2f2', '#dc2626')} onClick={() => { if(window.confirm('Excluir esta carga?')) deleteDoc(doc(db, "cargas_programadas", item.id!)) }}><Trash2 size={16} /> Excluir</button>
+                      </div>
+                    </div>
+                    <div style={styles.logisticsGrid}>
+                      <div style={styles.locationBox('#4f46e5')}><div style={styles.dot('#4f46e5')} /><p style={styles.locationTitle('#4f46e5')}>📍 ORIGEM / COLETA</p><p style={styles.cityName}>{item.coletaCidade || 'Cidade não informada'}</p><p style={styles.localName}>{item.coletaLocal || 'Local não informado'}</p><p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>{item.coletaData || 'Data não informada'}</p>{item.coletaLink && (<a href={item.coletaLink} target="_blank" rel="noreferrer" style={styles.mapLink('#4f46e5')}><MapPin size={12} /> Ver no Mapa <ExternalLink size={10} /></a>)}</div>
+                      {item.tipo === 'com_troca' && item.troca && (<div style={styles.trocaBanner}><div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309' }}><ArrowRightLeft size={16} /><span style={{ fontWeight: 800, textTransform: 'uppercase', fontSize: '11px', letterSpacing: '1px' }}>Troca de Nota Fiscal</span></div><p style={{ margin: 0, fontWeight: 700, fontSize: '14px' }}>{item.troca.cliente || 'Cliente não informado'}</p><p style={{ margin: 0, fontSize: '12px', color: '#78350f' }}>{item.troca.cidade || 'Cidade não informada'}</p>{item.troca.link && (<a href={item.troca.link} target="_blank" rel="noreferrer" style={styles.mapLink('#b45309')}><MapPin size={12} /> Ver no Mapa</a>)}</div>)}
+                      <div style={styles.locationBox('#10b981')}><div style={styles.dot('#10b981')} /><p style={styles.locationTitle('#10b981')}>🎯 DESTINO / ENTREGA</p><p style={styles.cityName}>{item.entregaCidade || 'Cidade não informada'}</p><p style={styles.localName}>{item.entregaLocal || 'Local não informado'}</p><p style={{ fontSize: '12px', color: '#10b981', fontWeight: 600, marginTop: '4px' }}><Calendar size={12} style={{ marginRight: '4px' }} /> {item.entregaData || 'Data não informada'}</p>{item.entregaLink && (<a href={item.entregaLink} target="_blank" rel="noreferrer" style={styles.mapLink('#10b981')}><MapPin size={12} /> Ver no Mapa <ExternalLink size={10} /></a>)}</div>
+                      <div style={styles.vehicleDetails}><p style={{ ...styles.locationTitle('#94a3b8'), marginBottom: '12px' }}>🚛 VEÍCULO & CARGA</p><div style={styles.detailRow}><span style={{ color: '#64748b' }}>Placa:</span><span style={{ fontWeight: 700 }}>{item.placa || '---'}</span></div><div style={styles.detailRow}><span style={{ color: '#64748b' }}>Carreta:</span><span style={{ fontWeight: 700 }}>{item.carreta || '---'}</span></div><div style={styles.detailRow}><span style={{ color: '#64748b' }}>Peso:</span><span style={{ fontWeight: 700, color: '#4f46e5' }}>{item.peso || '0'} kg</span></div></div>
+                    </div>
+                    <div style={styles.footer}><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Info size={14} color="#94a3b8" /><span style={{ fontSize: '12px', color: '#64748b' }}>PVs: <span style={{ fontWeight: 600, color: '#334155' }}>{item.pvs && item.pvs.length > 0 ? item.pvs.join(', ') : 'Nenhum'}</span></span></div>{item.obs && (<div style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic', backgroundColor: '#f8fafc', padding: '4px 12px', borderRadius: '8px' }}>Obs: {item.obs}</div>)}</div>
                   </div>
-                </div>
-                <div style={styles.logisticsGrid}>
-                  <div style={styles.locationBox('#4f46e5')}><div style={styles.dot('#4f46e5')} /><p style={styles.locationTitle('#4f46e5')}>📍 ORIGEM / COLETA</p><p style={styles.cityName}>{item.coletaCidade || 'Cidade não informada'}</p><p style={styles.localName}>{item.coletaLocal || 'Local não informado'}</p><p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>{item.coletaData || 'Data não informada'}</p>{item.coletaLink && (<a href={item.coletaLink} target="_blank" rel="noreferrer" style={styles.mapLink('#4f46e5')}><MapPin size={12} /> Ver no Mapa <ExternalLink size={10} /></a>)}</div>
-                  {item.tipo === 'com_troca' && item.troca && (<div style={styles.trocaBanner}><div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309' }}><ArrowRightLeft size={16} /><span style={{ fontWeight: 800, textTransform: 'uppercase', fontSize: '11px', letterSpacing: '1px' }}>Troca de Nota Fiscal</span></div><p style={{ margin: 0, fontWeight: 700, fontSize: '14px' }}>{item.troca.cliente || 'Cliente não informado'}</p><p style={{ margin: 0, fontSize: '12px', color: '#78350f' }}>{item.troca.cidade || 'Cidade não informada'}</p>{item.troca.link && (<a href={item.troca.link} target="_blank" rel="noreferrer" style={styles.mapLink('#b45309')}><MapPin size={12} /> Ver no Mapa</a>)}</div>)}
-                  <div style={styles.locationBox('#10b981')}><div style={styles.dot('#10b981')} /><p style={styles.locationTitle('#10b981')}>🎯 DESTINO / ENTREGA</p><p style={styles.cityName}>{item.entregaCidade || 'Cidade não informada'}</p><p style={styles.localName}>{item.entregaLocal || 'Local não informado'}</p><p style={{ fontSize: '12px', color: '#10b981', fontWeight: 600, marginTop: '4px' }}><Calendar size={12} style={{ marginRight: '4px' }} /> {item.entregaData || 'Data não informada'}</p>{item.entregaLink && (<a href={item.entregaLink} target="_blank" rel="noreferrer" style={styles.mapLink('#10b981')}><MapPin size={12} /> Ver no Mapa <ExternalLink size={10} /></a>)}</div>
-                  <div style={styles.vehicleDetails}><p style={{ ...styles.locationTitle('#94a3b8'), marginBottom: '12px' }}>🚛 VEÍCULO & CARGA</p><div style={styles.detailRow}><span style={{ color: '#64748b' }}>Placa:</span><span style={{ fontWeight: 700 }}>{item.placa || '---'}</span></div><div style={styles.detailRow}><span style={{ color: '#64748b' }}>Carreta:</span><span style={{ fontWeight: 700 }}>{item.carreta || '---'}</span></div><div style={styles.detailRow}><span style={{ color: '#64748b' }}>Peso:</span><span style={{ fontWeight: 700, color: '#4f46e5' }}>{item.peso || '0'} kg</span></div></div>
-                </div>
-                <div style={styles.footer}><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Info size={14} color="#94a3b8" /><span style={{ fontSize: '12px', color: '#64748b' }}>PVs: <span style={{ fontWeight: 600, color: '#334155' }}>{item.pvs && item.pvs.length > 0 ? item.pvs.join(', ') : 'Nenhum'}</span></span></div>{item.obs && (<div style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic', backgroundColor: '#f8fafc', padding: '4px 12px', borderRadius: '8px' }}>Obs: {item.obs}</div>)}</div>
+                ))}
               </div>
             ))
           )}
         </section>
       </div>
+
+      {/* MODAL DE RELATÓRIO COMERCIAL MELHORADO */}
+      {showModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowModal(false)}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()} id="modal-report">
+            <div style={styles.modalHeader} className="no-print">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', padding: '10px', borderRadius: '14px' }}><BarChart3 size={22} color="#fff" /></div>
+                <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 800 }}>Relatório Comercial Detalhado</h2>
+              </div>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button style={styles.btnPrimary} onClick={() => window.print()}><Printer size={18} /> Imprimir PDF</button>
+                <button style={{ ...styles.actionBtn('#f1f5f9', '#64748b'), padding: '10px 14px' }} onClick={() => setShowModal(false)}><X size={22} /></button>
+              </div>
+            </div>
+            
+            <div style={styles.modalBody} className="report-container">
+              <div className="report-header">
+                <h1 style={{ margin: 0, color: '#1e293b' }}>Logística TG - Relatório de Operações</h1>
+                <p style={{ color: '#64748b' }}>Gerado em: {new Date().toLocaleString('pt-BR')}</p>
+              </div>
+
+              <div className="stat-grid">
+                <div className="stat-box">
+                  <p style={styles.statLabel}>Total de Viagens</p>
+                  <p style={styles.statNumber}>{stats.totalVeiculos}</p>
+                </div>
+                <div className="stat-box">
+                  <p style={styles.statLabel}>Peso Total Transportado</p>
+                  <p style={styles.statNumber}>{stats.pesoTotal} kg</p>
+                </div>
+                <div className="stat-box">
+                  <p style={styles.statLabel}>Principais Clientes</p>
+                  <p style={{ fontSize: '14px', fontWeight: 700, margin: '4px 0' }}>{stats.clientesTop[0]?.[0] || '---'}</p>
+                </div>
+                <div className="stat-box">
+                  <p style={styles.statLabel}>Status Operacional</p>
+                  <p style={{ fontSize: '14px', fontWeight: 700, margin: '4px 0', color: '#10b981' }}>Ativo</p>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '32px' }} className="no-print">
+                <div>
+                  <h3 style={{ fontSize: '16px', fontWeight: 800, marginBottom: '16px', color: '#1e293b' }}>Top 10 Clientes (Volume)</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {stats.clientesTop.map(([cliente, qtd]) => (
+                      <div key={cliente} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: '#f8fafc', borderRadius: '8px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 600 }}>{cliente}</span>
+                        <span style={{ fontSize: '13px', fontWeight: 800, color: '#4f46e5' }}>{qtd} viagens</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '16px', fontWeight: 800, marginBottom: '16px', color: '#1e293b' }}>Top Motoristas</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {stats.motoristasTop.map(([mot, qtd]) => (
+                      <div key={mot} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: '#f8fafc', borderRadius: '8px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 600 }}>{mot}</span>
+                        <span style={{ fontSize: '13px', fontWeight: 800, color: '#10b981' }}>{qtd} viagens</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <h3 style={{ fontSize: '16px', fontWeight: 800, marginBottom: '12px', color: '#1e293b' }}>Listagem Detalhada de Cargas</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>DT</th>
+                    <th>Motorista</th>
+                    <th>Placa</th>
+                    <th>Origem</th>
+                    <th>Destino</th>
+                    <th>Peso (kg)</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cargasFiltradas.map(c => (
+                    <tr key={c.id}>
+                      <td>{c.dt}</td>
+                      <td>{c.motorista}</td>
+                      <td>{c.placa}</td>
+                      <td>{c.coletaCidade} - {c.coletaLocal}</td>
+                      <td>{c.entregaCidade} - {c.entregaLocal}</td>
+                      <td>{c.peso}</td>
+                      <td style={{ color: c.status === 'finalizada' ? '#10b981' : '#f97316', fontWeight: 700 }}>
+                        {c.status.toUpperCase()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL DE EDIÇÃO DE CARGA */}
       {showEditModal && editandoCarga && (
@@ -451,7 +616,13 @@ const GerenciadorDeCargas: React.FC = () => {
               <div style={styles.formSectionTitle}>Troca de Nota (Opcional)</div>
               <div style={styles.formGrid}>
                 <div style={styles.formGroup}><label style={styles.formLabel}>Tipo de Carga</label><select style={styles.formInput} value={editandoCarga.tipo} onChange={e => setEditandoCarga({...editandoCarga, tipo: e.target.value as any})}><option value="normal">Normal</option><option value="com_troca">Com Troca</option></select></div>
-                {editandoCarga.tipo === 'com_troca' && (<><div style={styles.formGroup}><label style={styles.formLabel}>Cliente Troca</label><input style={styles.formInput} value={editandoCarga.troca?.cliente || ''} onChange={e => setEditandoCarga({...editandoCarga, troca: {...(editandoCarga.troca || {cliente:'', cidade:'', link:''}), cliente: e.target.value}})} /></div><div style={styles.formGroup}><label style={styles.formLabel}>Cidade Troca</label><input style={styles.formInput} value={editandoCarga.troca?.cidade || ''} onChange={e => setEditandoCarga({...editandoCarga, troca: {...(editandoCarga.troca || {cliente:'', cidade:'', link:''}), cidade: e.target.value}})} /></div><div style={styles.formGroup}><label style={styles.formLabel}>Link Mapa Troca</label><input style={styles.formInput} value={editandoCarga.troca?.link || ''} onChange={e => setEditandoCarga({...editandoCarga, troca: {...(editandoCarga.troca || {cliente:'', cidade:'', link:''}), link: e.target.value}})} /></div></>)}
+                {editandoCarga.tipo === 'com_troca' && (
+                  <>
+                    <div style={styles.formGroup}><label style={styles.formLabel}>Cliente Troca</label><input style={styles.formInput} value={editandoCarga.troca?.cliente || ''} onChange={e => setEditandoCarga({...editandoCarga, troca: {...(editandoCarga.troca || {cliente:'', cidade:'', link:''}), cliente: e.target.value}})} /></div>
+                    <div style={styles.formGroup}><label style={styles.formLabel}>Cidade Troca</label><input style={styles.formInput} value={editandoCarga.troca?.cidade || ''} onChange={e => setEditandoCarga({...editandoCarga, troca: {...(editandoCarga.troca || {cliente:'', cidade:'', link:''}), cidade: e.target.value}})} /></div>
+                    <div style={styles.formGroup}><label style={styles.formLabel}>Link Mapa Troca</label><input style={styles.formInput} value={editandoCarga.troca?.link || ''} onChange={e => setEditandoCarga({...editandoCarga, troca: {...(editandoCarga.troca || {cliente:'', cidade:'', link:''}), link: e.target.value}})} /></div>
+                  </>
+                )}
               </div>
               <div style={styles.formSectionTitle}>Outros Detalhes</div>
               <div style={styles.formGrid}><div style={styles.formGroup}><label style={styles.formLabel}>PVs (separados por vírgula)</label><input style={styles.formInput} value={editandoCarga.pvs?.join(', ') || ''} onChange={e => setEditandoCarga({...editandoCarga, pvs: e.target.value.split(',').map(s => s.trim())})} /></div><div style={styles.formGroup}><label style={styles.formLabel}>Observações</label><textarea style={{...styles.formInput, height: '80px', resize: 'none'}} value={editandoCarga.obs} onChange={e => setEditandoCarga({...editandoCarga, obs: e.target.value})} /></div></div>
