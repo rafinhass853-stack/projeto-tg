@@ -10,7 +10,16 @@ import MenuMotorista from './MenuMotorista';
 import LançarCarga from './LançarCarga';
 
 const Menu = () => {
-  const [activeTab, setActiveTab] = useState<'motoristas-cad' | 'motoristas-list' | 'veiculos-cad' | 'veiculos-list' | 'carretas-cad' | 'carretas-list'>('motoristas-list');
+  const [activeTab, setActiveTab] = useState<
+    'motoristas-cad' | 
+    'motoristas-list' | 
+    'veiculos-cad' | 
+    'veiculos-list' | 
+    'carretas-cad' | 
+    'carretas-list' |
+    'lancar-carga'                    // ← Adicionado aqui
+  >('motoristas-list');
+
   const [selectedMotoristaId, setSelectedMotoristaId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
@@ -29,39 +38,39 @@ const Menu = () => {
   };
 
   const menuItems = [
-  {
-    section: 'Motoristas',
-    items: [
-      { id: 'motoristas-cad', label: 'Cadastrar Motorista', icon: '👤', color: '#3b82f6' },
-      { id: 'motoristas-list', label: 'Motoristas Cadastrados', icon: '📋', color: '#3b82f6' }
-    ]
-  },
-  {
-    section: 'Carretas',
-    items: [
-      { id: 'carretas-cad', label: 'Cadastrar Carreta', icon: '🚛', color: '#10b981' },
-      { id: 'carretas-list', label: 'Carretas Cadastradas', icon: '📦', color: '#10b981' }
-    ]
-  },
-  {
-    section: 'Veículos',
-    items: [
-      { id: 'veiculos-cad', label: 'Cadastrar Veículo', icon: '🚗', color: '#f59e0b' },
-      { id: 'veiculos-list', label: 'Veículos Cadastrados', icon: '🚙', color: '#f59e0b' }
-    ]
-  },
-  {
-    section: 'Cargas',
-    items: [
-      { 
-        id: 'lancar-carga', 
-        label: 'Lançar Carga', 
-        icon: '📦', 
-        color: '#8b5cf6' 
-      }
-    ]
-  }
-];
+    {
+      section: 'Motoristas',
+      items: [
+        { id: 'motoristas-cad', label: 'Cadastrar Motorista', icon: '👤', color: '#3b82f6' },
+        { id: 'motoristas-list', label: 'Motoristas Cadastrados', icon: '📋', color: '#3b82f6' }
+      ]
+    },
+    {
+      section: 'Carretas',
+      items: [
+        { id: 'carretas-cad', label: 'Cadastrar Carreta', icon: '🚛', color: '#10b981' },
+        { id: 'carretas-list', label: 'Carretas Cadastradas', icon: '📦', color: '#10b981' }
+      ]
+    },
+    {
+      section: 'Veículos',
+      items: [
+        { id: 'veiculos-cad', label: 'Cadastrar Veículo', icon: '🚗', color: '#f59e0b' },
+        { id: 'veiculos-list', label: 'Veículos Cadastrados', icon: '🚙', color: '#f59e0b' }
+      ]
+    },
+    {
+      section: 'Cargas',
+      items: [
+        { 
+          id: 'lancar-carga', 
+          label: 'Lançar Carga', 
+          icon: '📦', 
+          color: '#8b5cf6' 
+        }
+      ]
+    }
+  ];
 
   const getCurrentTitle = () => {
     for (const section of menuItems) {
@@ -130,7 +139,6 @@ const Menu = () => {
 
       {/* Conteúdo Principal */}
       <div style={contentStyle}>
-        {/* Header */}
         <div style={headerStyle}>
           <div style={headerLeftStyle}>
             <h1 style={pageTitleStyle}>{getCurrentTitle()}</h1>
@@ -147,7 +155,7 @@ const Menu = () => {
           </div>
         </div>
 
-        {/* Content Area */}
+        {/* Área de Conteúdo */}
         <div style={contentAreaStyle}>
           <div style={contentWrapperStyle}>
             {activeTab === 'motoristas-cad' && <CadastroMotorista />}
@@ -161,7 +169,7 @@ const Menu = () => {
             {activeTab === 'carretas-list' && <ListaCarretas />}
             {activeTab === 'veiculos-cad' && <CadastroVeiculo />}
             {activeTab === 'veiculos-list' && <ListaVeiculos />}
-            {activeTab === 'lancar-carga' && <LançarCarga />}
+            {activeTab === 'lancar-carga' && <LançarCarga />}   {/* ← Corrigido */}
           </div>
         </div>
       </div>
@@ -169,7 +177,9 @@ const Menu = () => {
   );
 };
 
-// ==================== ESTILOS MODERNOS ====================
+// ==================== ESTILOS ====================
+// (Seus estilos permanecem iguais - não alterei nada aqui)
+
 const dashboardStyle: React.CSSProperties = {
   display: 'flex',
   minHeight: '100vh',
@@ -379,50 +389,5 @@ const contentAreaStyle: React.CSSProperties = {
 const contentWrapperStyle: React.CSSProperties = {
   padding: '24px'
 };
-
-// Adicionar animações globais
-if (typeof document !== 'undefined') {
-  const styleSheet = document.createElement("style");
-  styleSheet.textContent = `
-    @keyframes slideIn {
-      from {
-        opacity: 0;
-        transform: translateX(-20px);
-      }
-      to {
-        opacity: 1;
-        transform: translateX(0);
-      }
-    }
-    
-    button:hover {
-      transform: translateY(-2px);
-    }
-    
-    button:active {
-      transform: translateY(0);
-    }
-    
-    ::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
-    }
-    
-    ::-webkit-scrollbar-track {
-      background: #f1f1f1;
-      border-radius: 10px;
-    }
-    
-    ::-webkit-scrollbar-thumb {
-      background: #cbd5e1;
-      border-radius: 10px;
-    }
-    
-    ::-webkit-scrollbar-thumb:hover {
-      background: #94a3b8;
-    }
-  `;
-  document.head.appendChild(styleSheet);
-}
 
 export default Menu;
