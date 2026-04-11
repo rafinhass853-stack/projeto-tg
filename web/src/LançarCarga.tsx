@@ -70,6 +70,7 @@ interface CargaData {
     link: string;
   };
   criadoEm?: any;
+  motoristaId?: string;
 }
 
 const GerenciadorDeCargas: React.FC = () => {
@@ -80,31 +81,64 @@ const GerenciadorDeCargas: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [showFilters, setShowFilters] = useState(true);
   
-  // Estados para Edição
   const [editandoCarga, setEditandoCarga] = useState<CargaData | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
 
-  // Estados para Filtros
   const [filtroDataColeta, setFiltroDataColeta] = useState('');
   const [filtroDataEntrega, setFiltroDataEntrega] = useState('');
   const [filtroCidadeColeta, setFiltroCidadeColeta] = useState('');
   const [filtroCidadeEntrega, setFiltroCidadeEntrega] = useState('');
   const [filtroCliente, setFiltroCliente] = useState('');
-  const [filtroMotorista, setFiltroMotorista] = useState(''); // NOVO FILTRO
+  const [filtroMotorista, setFiltroMotorista] = useState('');
   const [filtroQuantidadeVeiculos, setFiltroQuantidadeVeiculos] = useState('');
-  const [mostrarFinalizadas, setMostrarFinalizadas] = useState(false); // NOVO ESTADO
+  const [mostrarFinalizadas, setMostrarFinalizadas] = useState(false);
 
+  // Efeito para carregar cargas de todos os motoristas sem depender de collectionGroup
   useEffect(() => {
-    const q = query(collection(db, "cargas_programadas"), orderBy("criadoEm", "desc"));
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const docs: any[] = [];
-      querySnapshot.forEach((doc) => docs.push({ id: doc.id, ...doc.data() }));
-      setListaCargas(docs);
+    // 1. Primeiro ouvimos a coleção de motoristas
+    const qMotoristas = query(collection(db, "motoristas"));
+    
+    const unsubMotoristas = onSnapshot(qMotoristas, (snapMotoristas) => {
+      const unsubscribesCargas: (() => void)[] = [];
+      const todasAsCargasMap = new Map<string, CargaData[]>();
+
+      snapMotoristas.forEach((docMot) => {
+        const motoristaId = docMot.id;
+        const qCargas = query(collection(db, "motoristas", motoristaId, "cargas"), orderBy("criadoEm", "desc"));
+        
+        const unsubCargas = onSnapshot(qCargas, (snapCargas) => {
+          const cargasDoMotorista: CargaData[] = [];
+          snapCargas.forEach((docCarga) => {
+            cargasDoMotorista.push({ id: docCarga.id, motoristaId, ...docCarga.data() } as CargaData);
+          });
+          
+          todasAsCargasMap.set(motoristaId, cargasDoMotorista);
+          
+          // Consolida todas as cargas de todos os motoristas em uma única lista
+          const listaConsolidada: CargaData[] = [];
+          todasAsCargasMap.forEach((cargas) => listaConsolidada.push(...cargas));
+          
+          // Ordena por data de criação (mais recente primeiro)
+          listaConsolidada.sort((a, b) => {
+            const timeA = a.criadoEm?.seconds || 0;
+            const timeB = b.criadoEm?.seconds || 0;
+            return timeB - timeA;
+          });
+          
+          setListaCargas(listaConsolidada);
+        });
+        
+        unsubscribesCargas.push(unsubCargas);
+      });
+
+      return () => {
+        unsubscribesCargas.forEach(unsub => unsub());
+      };
     });
-    return () => unsubscribe();
+
+    return () => unsubMotoristas();
   }, []);
 
-  // Extrair clientes únicos
   const clientesUnicos = useMemo(() => {
     const clientes = new Map<string, number>();
     listaCargas.forEach(carga => {
@@ -114,10 +148,8 @@ const GerenciadorDeCargas: React.FC = () => {
     return Array.from(clientes.entries()).sort((a, b) => b[1] - a[1]);
   }, [listaCargas]);
 
-  // Lógica de Filtragem
   const cargasFiltradas = useMemo(() => {
     let resultado = listaCargas.filter(carga => {
-      // Ajuste 1: Não aparecer finalizadas por padrão
       if (!mostrarFinalizadas && carga.status === 'finalizada') return false;
 
       const dataColetaFormatada = filtroDataColeta ? filtroDataColeta.split('-').reverse().join('/') : '';
@@ -129,8 +161,6 @@ const GerenciadorDeCargas: React.FC = () => {
       const bateCliente = !filtroCliente || 
         (carga.coletaLocal && carga.coletaLocal.toLowerCase().includes(filtroCliente.toLowerCase())) ||
         (carga.entregaLocal && carga.entregaLocal.toLowerCase().includes(filtroCliente.toLowerCase()));
-      
-      // Ajuste 2: Filtro por motorista
       const bateMotorista = !filtroMotorista || (carga.motorista && carga.motorista.toLowerCase().includes(filtroMotorista.toLowerCase()));
 
       return bateDataColeta && bateDataEntrega && bateCidadeColeta && bateCidadeEntrega && bateCliente && bateMotorista;
@@ -143,7 +173,6 @@ const GerenciadorDeCargas: React.FC = () => {
     return resultado;
   }, [listaCargas, filtroDataColeta, filtroDataEntrega, filtroCidadeColeta, filtroCidadeEntrega, filtroCliente, filtroMotorista, filtroQuantidadeVeiculos, mostrarFinalizadas]);
 
-  // Ajuste 4: Agrupamento de Cargas
   const cargasAgrupadas = useMemo(() => {
     const grupos: { [key: string]: CargaData[] } = {};
     cargasFiltradas.forEach(carga => {
@@ -154,7 +183,6 @@ const GerenciadorDeCargas: React.FC = () => {
     return grupos;
   }, [cargasFiltradas]);
 
-  // Estatísticas (Relatório Comercial Melhorado)
   const stats = useMemo(() => {
     const cidadesColeta = new Map<string, number>();
     const cidadesEntrega = new Map<string, number>();
@@ -242,8 +270,7 @@ const GerenciadorDeCargas: React.FC = () => {
           else if (blocoAtual === 'TROCA') novaCarga.troca!.link = url;
         }
         if (blocoAtual === 'TROCA' && linha.includes('CLIENTE:')) novaCarga.troca!.cliente = valor;
-        if (linha.includes('Obs:')) novaCarga.obs = valor;
-        if (linha.match(/^\d+$/) || (linha.includes('.') && linha.match(/\d/))) {
+        if (linha.includes('PV:')) {
            if (!linha.includes('CPF') && !linha.includes('DT') && !linha.includes('Peso')) novaCarga.pvs.push(linha.trim());
         }
       });
@@ -251,17 +278,23 @@ const GerenciadorDeCargas: React.FC = () => {
     } catch (err) { console.error("Erro no Parse:", err); }
   };
 
-  const realizarAutoCadastros = async (dados: CargaData) => {
-    if (dados.cpf) {
-      const qMot = query(collection(db, "motoristas"), where("cpf", "==", dados.cpf));
-      const snapMot = await getDocs(qMot);
-      if (snapMot.empty) {
-        await addDoc(collection(db, "motoristas"), {
-          nome: dados.motorista, cpf: dados.cpf, createdAt: serverTimestamp(),
-          temMopp: "Não", whatsapp: "", cidade: dados.coletaCidade || ""
-        });
-      }
+  const obterOuCriarMotorista = async (dados: CargaData): Promise<string | null> => {
+    if (!dados.cpf) return null;
+    const qMot = query(collection(db, "motoristas"), where("cpf", "==", dados.cpf));
+    const snapMot = await getDocs(qMot);
+    
+    if (!snapMot.empty) {
+      return snapMot.docs[0].id;
+    } else {
+      const docRef = await addDoc(collection(db, "motoristas"), {
+        nome: dados.motorista, cpf: dados.cpf, createdAt: serverTimestamp(),
+        temMopp: "Não", whatsapp: "", cidade: dados.coletaCidade || ""
+      });
+      return docRef.id;
     }
+  };
+
+  const realizarAutoCadastros = async (dados: CargaData) => {
     if (dados.placa) {
       const qVei = query(collection(db, "veiculos"), where("placa", "==", dados.placa));
       const snapVei = await getDocs(qVei);
@@ -269,9 +302,9 @@ const GerenciadorDeCargas: React.FC = () => {
     }
   };
 
-  const finalizarCargasAntigas = async (cpf: string) => {
-    if (!cpf) return;
-    const q = query(collection(db, "cargas_programadas"), where("cpf", "==", cpf), where("status", "==", "programada"));
+  const finalizarCargasAntigas = async (motoristaId: string) => {
+    if (!motoristaId) return;
+    const q = query(collection(db, "motoristas", motoristaId, "cargas"), where("status", "==", "programada"));
     const snap = await getDocs(q);
     if (!snap.empty) {
       const batch = writeBatch(db);
@@ -284,8 +317,19 @@ const GerenciadorDeCargas: React.FC = () => {
     if (!cargaDetectada) return;
     setLoading(true);
     try {
-      await finalizarCargasAntigas(cargaDetectada.cpf);
-      await addDoc(collection(db, "cargas_programadas"), { ...cargaDetectada, criadoEm: serverTimestamp() });
+      const motoristaId = await obterOuCriarMotorista(cargaDetectada);
+      if (!motoristaId) {
+        alert("❌ CPF do motorista é obrigatório.");
+        return;
+      }
+
+      await finalizarCargasAntigas(motoristaId);
+      
+      await addDoc(collection(db, "motoristas", motoristaId, "cargas"), { 
+        ...cargaDetectada, 
+        criadoEm: serverTimestamp() 
+      });
+
       await realizarAutoCadastros(cargaDetectada);
       setTextoColado(''); setCargaDetectada(null);
       alert("✅ Carga salva com sucesso!");
@@ -293,11 +337,11 @@ const GerenciadorDeCargas: React.FC = () => {
   };
 
   const handleSalvarEdicao = async () => {
-    if (!editandoCarga || !editandoCarga.id) return;
+    if (!editandoCarga || !editandoCarga.id || !editandoCarga.motoristaId) return;
     setLoading(true);
     try {
-      const cargaRef = doc(db, "cargas_programadas", editandoCarga.id);
-      const { id, criadoEm, ...dadosParaAtualizar } = editandoCarga;
+      const cargaRef = doc(db, "motoristas", editandoCarga.motoristaId, "cargas", editandoCarga.id);
+      const { id, criadoEm, motoristaId, ...dadosParaAtualizar } = editandoCarga;
       await updateDoc(cargaRef, dadosParaAtualizar);
       setShowEditModal(false); setEditandoCarga(null);
       alert("✅ Carga atualizada com sucesso!");
@@ -402,103 +446,291 @@ const GerenciadorDeCargas: React.FC = () => {
             <div style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', padding: '8px', borderRadius: '14px' }}><PlusCircle size={20} color="#fff" /></div>
             <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>Lançar Nova Carga</h2>
           </div>
-          <textarea style={styles.textarea} value={textoColado} onChange={(e) => { setTextoColado(e.target.value); parsearCarga(e.target.value); }} placeholder="Cole aqui o texto do WhatsApp com os dados da carga..." />
+          <textarea 
+            style={styles.textarea} 
+            placeholder="Cole aqui o texto da carga..." 
+            value={textoColado} 
+            onChange={(e) => { setTextoColado(e.target.value); parsearCarga(e.target.value); }}
+          />
+          
           {cargaDetectada && (
             <div style={styles.previewBox}>
-              <div style={styles.grid4}>
-                <div style={styles.infoItem}><div style={styles.iconBox}><User size={18} color="#4f46e5" /></div><div><p style={styles.label}>Motorista</p><p style={styles.value}>{cargaDetectada.motorista || '---'}</p></div></div>
-                <div style={styles.infoItem}><div style={styles.iconBox}><Hash size={18} color="#4f46e5" /></div><div><p style={styles.label}>DT</p><p style={styles.value}>{cargaDetectada.dt || '---'}</p></div></div>
-                <div style={styles.infoItem}><div style={styles.iconBox}><CreditCard size={18} color="#4f46e5" /></div><div><p style={styles.label}>Placa</p><p style={styles.value}>{cargaDetectada.placa || '---'}</p></div></div>
-                <div style={styles.infoItem}><div style={styles.iconBox}><Package size={18} color="#4f46e5" /></div><div><p style={styles.label}>Peso</p><p style={styles.value}>{cargaDetectada.peso || '---'} kg</p></div></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <ClipboardList size={18} /> Pré-visualização dos Dados
+                </h3>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <span style={{ ...styles.badge, backgroundColor: '#fff', border: '1px solid #e2e8f0' }}>{cargaDetectada.dt}</span>
+                  <span style={{ ...styles.badge, backgroundColor: '#fff', border: '1px solid #e2e8f0' }}>{cargaDetectada.peso}</span>
+                </div>
               </div>
-              <button style={styles.btnPrimary} onClick={salvarTudo} disabled={loading}>{loading ? <RefreshCw size={20} className="spin" /> : <CheckCircle2 size={20} />} Confirmar e Salvar no Sistema</button>
+              
+              <div style={styles.grid4}>
+                <div style={styles.infoItem}>
+                  <div style={styles.iconBox}><User size={18} color="#4f46e5" /></div>
+                  <div><p style={styles.label}>Motorista</p><p style={styles.value}>{cargaDetectada.motorista}</p></div>
+                </div>
+                <div style={styles.infoItem}>
+                  <div style={styles.iconBox}><CreditCard size={18} color="#4f46e5" /></div>
+                  <div><p style={styles.label}>CPF</p><p style={styles.value}>{cargaDetectada.cpf}</p></div>
+                </div>
+                <div style={styles.infoItem}>
+                  <div style={styles.iconBox}><Hash size={18} color="#4f46e5" /></div>
+                  <div><p style={styles.label}>Placa</p><p style={styles.value}>{cargaDetectada.placa}</p></div>
+                </div>
+                <div style={styles.infoItem}>
+                  <div style={styles.iconBox}><Layers size={18} color="#4f46e5" /></div>
+                  <div><p style={styles.label}>Carreta</p><p style={styles.value}>{cargaDetectada.carreta}</p></div>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '24px' }}>
+                <div style={{ padding: '16px', borderRadius: '16px', backgroundColor: '#f0fdf4', border: '1px solid #dcfce7' }}>
+                  <p style={{ ...styles.label, color: '#16a34a' }}>Origem</p>
+                  <p style={styles.value}>{cargaDetectada.coletaCidade}</p>
+                  <p style={{ ...styles.value, fontSize: '13px', fontWeight: 500, color: '#64748b' }}>{cargaDetectada.coletaLocal}</p>
+                </div>
+                <div style={{ padding: '16px', borderRadius: '16px', backgroundColor: '#eff6ff', border: '1px solid #dbeafe' }}>
+                  <p style={{ ...styles.label, color: '#2563eb' }}>Destino</p>
+                  <p style={styles.value}>{cargaDetectada.entregaCidade}</p>
+                  <p style={{ ...styles.value, fontSize: '13px', fontWeight: 500, color: '#64748b' }}>{cargaDetectada.entregaLocal}</p>
+                </div>
+              </div>
+
+              <button style={styles.btnPrimary} onClick={salvarTudo} disabled={loading}>
+                {loading ? <RefreshCw size={20} className="spin" /> : <><CheckCircle2 size={20} /> Confirmar e Salvar Carga</>}
+              </button>
             </div>
           )}
         </section>
 
-        <section className="no-print">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><ClipboardList size={24} color="#64748b" /><h3 style={{ fontSize: '22px', fontWeight: 700, margin: 0 }}>Programação Ativa</h3></div>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button 
-                style={{ ...styles.btnSecondary, backgroundColor: mostrarFinalizadas ? '#ecfdf5' : '#fff' }} 
-                onClick={() => setMostrarFinalizadas(!mostrarFinalizadas)}
-              >
-                {mostrarFinalizadas ? <CheckCircle2 size={16} color="#10b981" /> : <Clock size={16} />} 
-                {mostrarFinalizadas ? 'Exibindo Tudo' : 'Ocultar Finalizadas'}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }} className="no-print">
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <h2 style={{ fontSize: '22px', fontWeight: 800, color: '#1e293b', margin: 0 }}>Cargas Programadas</h2>
+            <button 
+              onClick={() => setShowFilters(!showFilters)}
+              style={{ ...styles.actionBtn(showFilters ? '#eef2ff' : '#fff', showFilters ? '#4f46e5' : '#64748b'), border: '1px solid #e2e8f0' }}
+            >
+              <Filter size={16} /> {showFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button 
+              onClick={() => setMostrarFinalizadas(!mostrarFinalizadas)}
+              style={styles.actionBtn(mostrarFinalizadas ? '#ecfdf5' : '#fff', mostrarFinalizadas ? '#10b981' : '#64748b')}
+            >
+              {mostrarFinalizadas ? 'Ocultar Finalizadas' : 'Mostrar Finalizadas'}
+            </button>
+          </div>
+        </div>
+
+        {showFilters && (
+          <div style={styles.filterBar} className="no-print">
+            <div style={styles.filterGroup}>
+              <label style={styles.filterLabel}>Motorista</label>
+              <input style={styles.filterInput} placeholder="Filtrar motorista..." value={filtroMotorista} onChange={e => setFiltroMotorista(e.target.value)} />
+            </div>
+            <div style={styles.filterGroup}>
+              <label style={styles.filterLabel}>Cliente / Local</label>
+              <input style={styles.filterInput} placeholder="Filtrar cliente..." value={filtroCliente} onChange={e => setFiltroCliente(e.target.value)} />
+            </div>
+            <div style={styles.filterGroup}>
+              <label style={styles.filterLabel}>Cidade Coleta</label>
+              <select style={styles.filterSelect} value={filtroCidadeColeta} onChange={e => setFiltroCidadeColeta(e.target.value)}>
+                <option value="">Todas</option>
+                {cidadesColeta.map(([c]) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div style={styles.filterGroup}>
+              <label style={styles.filterLabel}>Cidade Entrega</label>
+              <select style={styles.filterSelect} value={filtroCidadeEntrega} onChange={e => setFiltroCidadeEntrega(e.target.value)}>
+                <option value="">Todas</option>
+                {cidadesEntrega.map(([c]) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div style={{ ...styles.filterGroup, justifyContent: 'flex-end' }}>
+              <button style={styles.clearBtn} onClick={() => {
+                setFiltroDataColeta(''); setFiltroDataEntrega(''); setFiltroCidadeColeta('');
+                setFiltroCidadeEntrega(''); setFiltroCliente(''); setFiltroMotorista('');
+              }}>
+                <RefreshCw size={14} /> Limpar
               </button>
-              <button style={styles.btnSecondary} onClick={() => setShowFilters(!showFilters)}><Filter size={16} /> {showFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'} <ChevronDown size={14} style={{ transform: showFilters ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} /></button>
             </div>
           </div>
-          
-          {showFilters && (
-            <div style={styles.filterBar}>
-              <div style={styles.filterGroup}><label style={styles.filterLabel}>📅 Data Coleta</label><input type="date" style={styles.filterInput} value={filtroDataColeta} onChange={(e) => setFiltroDataColeta(e.target.value)} /></div>
-              <div style={styles.filterGroup}><label style={styles.filterLabel}>📅 Data Entrega</label><input type="date" style={styles.filterInput} value={filtroDataEntrega} onChange={(e) => setFiltroDataEntrega(e.target.value)} /></div>
-              <div style={styles.filterGroup}><label style={styles.filterLabel}>🏙️ Cidade Coleta</label><select style={styles.filterSelect} value={filtroCidadeColeta} onChange={(e) => setFiltroCidadeColeta(e.target.value)}><option value="">Todas as Cidades</option>{cidadesColeta.map(([cidade, qtd]) => (<option key={cidade} value={cidade}>{cidade} ({qtd})</option>))}</select></div>
-              <div style={styles.filterGroup}><label style={styles.filterLabel}>🏙️ Cidade Entrega</label><select style={styles.filterSelect} value={filtroCidadeEntrega} onChange={(e) => setFiltroCidadeEntrega(e.target.value)}><option value="">Todas as Cidades</option>{cidadesEntrega.map(([cidade, qtd]) => (<option key={cidade} value={cidade}>{cidade} ({qtd})</option>))}</select></div>
-              <div style={styles.filterGroup}><label style={styles.filterLabel}>🏢 Cliente</label><input type="text" style={styles.filterInput} value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)} placeholder="Nome do cliente..." list="clientes-list" /><datalist id="clientes-list">{clientesUnicos.map(([cliente]) => (<option key={cliente} value={cliente} />))}</datalist></div>
-              <div style={styles.filterGroup}><label style={styles.filterLabel}>👤 Motorista</label><input type="text" style={styles.filterInput} value={filtroMotorista} onChange={(e) => setFiltroMotorista(e.target.value)} placeholder="Nome do motorista..." /></div>
-              <div style={styles.filterGroup}><label style={styles.filterLabel}>🚛 Limite</label><select style={styles.filterSelect} value={filtroQuantidadeVeiculos} onChange={(e) => setFiltroQuantidadeVeiculos(e.target.value)}><option value="todos">Todos</option><option value="5">5 veíc.</option><option value="10">10 veíc.</option><option value="20">20 veíc.</option><option value="50">50 veíc.</option></select></div>
-              {(filtroDataColeta || filtroDataEntrega || filtroCidadeColeta || filtroCidadeEntrega || filtroCliente || filtroMotorista || filtroQuantidadeVeiculos !== 'todos') && (<div style={styles.filterGroup}><label style={styles.filterLabel}>&nbsp;</label><button style={styles.clearBtn} onClick={() => { setFiltroDataColeta(''); setFiltroDataEntrega(''); setFiltroCidadeColeta(''); setFiltroCidadeEntrega(''); setFiltroCliente(''); setFiltroMotorista(''); setFiltroQuantidadeVeiculos('todos'); }}><X size={16} /> Limpar</button></div>)}
+        )}
+
+        <div className="no-print">
+          {Object.entries(cargasAgrupadas).length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+              <Info size={48} style={{ marginBottom: '16px', opacity: 0.5 }} />
+              <p>Nenhuma carga encontrada.</p>
             </div>
-          )}
-
-          <div style={{ marginBottom: '16px', padding: '12px 20px', backgroundColor: '#fff', borderRadius: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            <div style={{ display: 'flex', gap: '16px' }}><span style={{ fontSize: '13px', color: '#64748b' }}><strong>{cargasFiltradas.length}</strong> cargas encontradas</span><span style={{ fontSize: '13px', color: '#64748b' }}><strong>{stats.pesoTotal}</strong> kg total</span></div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>{stats.clientesTop.slice(0, 3).map(([cliente, qtd]) => (<span key={cliente} style={{ fontSize: '11px', backgroundColor: '#f1f5f9', padding: '4px 12px', borderRadius: '20px', color: '#475569' }}>{cliente.substring(0, 20)}: {qtd}</span>))}</div>
-          </div>
-
-          {cargasFiltradas.length === 0 ? (
-            <div style={{ ...styles.card, textAlign: 'center', padding: '60px', border: '2px dashed #e2e8f0', backgroundColor: 'transparent' }}><Search size={48} color="#cbd5e1" style={{ marginBottom: '16px' }} /><p style={{ color: '#94a3b8', fontWeight: 500, fontSize: '16px' }}>Nenhuma carga encontrada com os filtros aplicados.</p><button style={{ ...styles.btnSecondary, marginTop: '16px' }} onClick={() => { setFiltroDataColeta(''); setFiltroDataEntrega(''); setFiltroCidadeColeta(''); setFiltroCidadeEntrega(''); setFiltroCliente(''); setFiltroMotorista(''); setFiltroQuantidadeVeiculos('todos'); }}>Limpar Filtros</button></div>
           ) : (
             Object.entries(cargasAgrupadas).map(([grupo, cargas]) => (
-              <div key={grupo} style={{ marginBottom: '32px' }}>
+              <div key={grupo} style={{ marginBottom: '40px' }}>
                 <div style={styles.groupHeader}>
-                  <Layers size={18} color="#64748b" />
-                  <h4 style={styles.groupTitle}>{grupo}</h4>
-                  <span style={{ marginLeft: 'auto', fontSize: '12px', fontWeight: 700, color: '#94a3b8' }}>{cargas.length} veículo(s)</span>
+                  <MapPin size={18} color="#475569" />
+                  <h3 style={styles.groupTitle}>{grupo}</h3>
+                  <span style={{ ...styles.badge, marginLeft: 'auto', backgroundColor: '#fff' }}>{cargas.length} veículos</span>
                 </div>
-                {cargas.map((item) => (
-                  <div key={item.id} style={styles.itemCard(item.status)}>
+
+                {cargas.map((carga) => (
+                  <div key={carga.id} style={styles.itemCard(carga.status)}>
                     <div style={styles.itemHeader}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}><div style={{ padding: '12px', borderRadius: '14px', backgroundColor: item.status === 'finalizada' ? '#ecfdf5' : '#eef2ff' }}><Truck size={24} color={item.status === 'finalizada' ? '#10b981' : '#4f46e5'} /></div><div><h4 style={{ margin: 0, fontSize: '18px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}><span style={{ backgroundColor: '#f1f5f9', padding: '2px 10px', borderRadius: '20px', fontSize: '14px' }}>DT: {item.dt || '---'}</span><span style={{ color: '#334155' }}>{item.motorista || 'Motorista não informado'}</span></h4><div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '6px' }}><span style={styles.statusBadge(item.status)}>{item.status === 'finalizada' ? '✓ Finalizada' : '⏳ Programada'}</span><span style={{ fontSize: '12px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px' }}><Clock size={12} /> Coleta: {item.coletaData || '---'}</span></div></div></div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button style={styles.actionBtn('#f1f5f9', '#4f46e5')} onClick={() => { setEditandoCarga(item); setShowEditModal(true); }}><Edit3 size={16} /> Editar</button>
-                        {item.status !== 'finalizada' && (<button style={styles.actionBtn('#ecfdf5', '#059669')} onClick={() => updateDoc(doc(db, "cargas_programadas", item.id!), { status: 'finalizada' })}><CheckCircle2 size={16} /> Finalizar</button>)}
-                        <button style={styles.actionBtn('#fef2f2', '#dc2626')} onClick={() => { if(window.confirm('Excluir esta carga?')) deleteDoc(doc(db, "cargas_programadas", item.id!)) }}><Trash2 size={16} /> Excluir</button>
+                      <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                        <div style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', padding: '12px', borderRadius: '16px' }}>
+                          <Truck size={24} color="#fff" />
+                        </div>
+                        <div>
+                          <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#1e293b' }}>{carga.motorista}</h3>
+                          <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
+                            <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <CreditCard size={14} /> {carga.cpf}
+                            </span>
+                            <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Calendar size={14} /> DT: {carga.dt}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div style={styles.statusBadge(carga.status)}>
+                        {carga.status === 'finalizada' ? <CheckCircle2 size={14} /> : <Clock size={14} />}
+                        {carga.status.toUpperCase()}
                       </div>
                     </div>
+
                     <div style={styles.logisticsGrid}>
-                      <div style={styles.locationBox('#4f46e5')}><div style={styles.dot('#4f46e5')} /><p style={styles.locationTitle('#4f46e5')}>📍 ORIGEM / COLETA</p><p style={styles.cityName}>{item.coletaCidade || 'Cidade não informada'}</p><p style={styles.localName}>{item.coletaLocal || 'Local não informado'}</p><p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>{item.coletaData || 'Data não informada'}</p>{item.coletaLink && (<a href={item.coletaLink} target="_blank" rel="noreferrer" style={styles.mapLink('#4f46e5')}><MapPin size={12} /> Ver no Mapa <ExternalLink size={10} /></a>)}</div>
-                      {item.tipo === 'com_troca' && item.troca && (<div style={styles.trocaBanner}><div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309' }}><ArrowRightLeft size={16} /><span style={{ fontWeight: 800, textTransform: 'uppercase', fontSize: '11px', letterSpacing: '1px' }}>Troca de Nota Fiscal</span></div><p style={{ margin: 0, fontWeight: 700, fontSize: '14px' }}>{item.troca.cliente || 'Cliente não informado'}</p><p style={{ margin: 0, fontSize: '12px', color: '#78350f' }}>{item.troca.cidade || 'Cidade não informada'}</p>{item.troca.link && (<a href={item.troca.link} target="_blank" rel="noreferrer" style={styles.mapLink('#b45309')}><MapPin size={12} /> Ver no Mapa</a>)}</div>)}
-                      <div style={styles.locationBox('#10b981')}><div style={styles.dot('#10b981')} /><p style={styles.locationTitle('#10b981')}>🎯 DESTINO / ENTREGA</p><p style={styles.cityName}>{item.entregaCidade || 'Cidade não informada'}</p><p style={styles.localName}>{item.entregaLocal || 'Local não informado'}</p><p style={{ fontSize: '12px', color: '#10b981', fontWeight: 600, marginTop: '4px' }}><Calendar size={12} style={{ marginRight: '4px' }} /> {item.entregaData || 'Data não informada'}</p>{item.entregaLink && (<a href={item.entregaLink} target="_blank" rel="noreferrer" style={styles.mapLink('#10b981')}><MapPin size={12} /> Ver no Mapa <ExternalLink size={10} /></a>)}</div>
-                      <div style={styles.vehicleDetails}><p style={{ ...styles.locationTitle('#94a3b8'), marginBottom: '12px' }}>🚛 VEÍCULO & CARGA</p><div style={styles.detailRow}><span style={{ color: '#64748b' }}>Placa:</span><span style={{ fontWeight: 700 }}>{item.placa || '---'}</span></div><div style={styles.detailRow}><span style={{ color: '#64748b' }}>Carreta:</span><span style={{ fontWeight: 700 }}>{item.carreta || '---'}</span></div><div style={styles.detailRow}><span style={{ color: '#64748b' }}>Peso:</span><span style={{ fontWeight: 700, color: '#4f46e5' }}>{item.peso || '0'} kg</span></div></div>
+                      <div style={styles.locationBox('#10b981')}>
+                        <div style={styles.dot('#10b981')} />
+                        <p style={styles.locationTitle('#10b981')}>COLETA</p>
+                        <h4 style={styles.cityName}>{carga.coletaCidade}</h4>
+                        <p style={styles.localName}>{carga.coletaLocal}</p>
+                        <p style={{ fontSize: '12px', color: '#64748b', marginTop: '8px', fontWeight: 600 }}>{carga.coletaData}</p>
+                        {carga.coletaLink && (
+                          <a href={carga.coletaLink} target="_blank" rel="noreferrer" style={styles.mapLink('#10b981')}>
+                            <MapPin size={14} /> Ver no Mapa <ExternalLink size={12} />
+                          </a>
+                        )}
+                      </div>
+
+                      <div style={styles.locationBox('#4f46e5')}>
+                        <div style={styles.dot('#4f46e5')} />
+                        <p style={styles.locationTitle('#4f46e5')}>ENTREGA</p>
+                        <h4 style={styles.cityName}>{carga.entregaCidade}</h4>
+                        <p style={styles.localName}>{carga.entregaLocal}</p>
+                        <p style={{ fontSize: '12px', color: '#64748b', marginTop: '8px', fontWeight: 600 }}>{carga.entregaData}</p>
+                        {carga.entregaLink && (
+                          <a href={carga.entregaLink} target="_blank" rel="noreferrer" style={styles.mapLink('#4f46e5')}>
+                            <MapPin size={14} /> Ver no Mapa <ExternalLink size={12} />
+                          </a>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {carga.tipo === 'com_troca' && carga.troca && (
+                          <div style={styles.trocaBanner}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309' }}>
+                              <RefreshCw size={16} /> <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.5px' }}>TROCA DE NOTA</span>
+                            </div>
+                            <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#92400e' }}>{carga.troca.cliente}</p>
+                            <p style={{ margin: 0, fontSize: '12px', color: '#b45309', fontWeight: 500 }}>{carga.troca.cidade}</p>
+                          </div>
+                        )}
+                        
+                        <div style={styles.vehicleDetails}>
+                          <div style={styles.detailRow}>
+                            <span style={{ color: '#64748b', fontWeight: 600 }}>Placa/Carreta:</span>
+                            <span style={{ color: '#1e293b', fontWeight: 800 }}>{carga.placa} / {carga.carreta}</span>
+                          </div>
+                          <div style={styles.detailRow}>
+                            <span style={{ color: '#64748b', fontWeight: 600 }}>Peso:</span>
+                            <span style={{ color: '#4f46e5', fontWeight: 800 }}>{carga.peso}</span>
+                          </div>
+                          {carga.pvs && carga.pvs.length > 0 && (
+                            <div style={{ ...styles.detailRow, flexDirection: 'column', gap: '4px', marginTop: '8px' }}>
+                              <span style={{ color: '#64748b', fontWeight: 600 }}>PVs:</span>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                {carga.pvs.map((pv, idx) => (
+                                  <span key={idx} style={{ backgroundColor: '#fff', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', border: '1px solid #e2e8f0' }}>{pv}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div style={styles.footer}><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Info size={14} color="#94a3b8" /><span style={{ fontSize: '12px', color: '#64748b' }}>PVs: <span style={{ fontWeight: 600, color: '#334155' }}>{item.pvs && item.pvs.length > 0 ? item.pvs.join(', ') : 'Nenhum'}</span></span></div>{item.obs && (<div style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic', backgroundColor: '#f8fafc', padding: '4px 12px', borderRadius: '8px' }}>Obs: {item.obs}</div>)}</div>
+
+                    {carga.obs && (
+                      <div style={{ backgroundColor: '#fffbeb', padding: '12px 16px', borderRadius: '12px', marginBottom: '20px', borderLeft: '4px solid #f59e0b' }}>
+                        <p style={{ margin: 0, fontSize: '13px', color: '#92400e', fontWeight: 500 }}>
+                          <strong>OBS:</strong> {carga.obs}
+                        </p>
+                      </div>
+                    )}
+
+                    <div style={styles.footer}>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button 
+                          style={styles.actionBtn('#f8fafc', '#475569')}
+                          onClick={() => { setEditandoCarga(carga); setShowEditModal(true); }}
+                        >
+                          <Edit3 size={14} /> Editar
+                        </button>
+                        <button 
+                          style={styles.actionBtn('#fef2f2', '#ef4444')}
+                          onClick={async () => {
+                            if (window.confirm('Deseja excluir esta carga?')) {
+                              try {
+                                const cargaRef = doc(db, "motoristas", carga.motoristaId!, "cargas", carga.id!);
+                                await deleteDoc(cargaRef);
+                              } catch (err) { alert("Erro ao excluir."); }
+                            }
+                          }}
+                        >
+                          <Trash2 size={14} /> Excluir
+                        </button>
+                      </div>
+                      {carga.status === 'programada' && (
+                        <button 
+                          style={styles.actionBtn('#ecfdf5', '#10b981')}
+                          onClick={async () => {
+                            const cargaRef = doc(db, "motoristas", carga.motoristaId!, "cargas", carga.id!);
+                            await updateDoc(cargaRef, { status: 'finalizada' });
+                          }}
+                        >
+                          <CheckCircle2 size={14} /> Finalizar Carga
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
             ))
           )}
-        </section>
+        </div>
       </div>
 
-      {/* MODAL DE RELATÓRIO COMERCIAL MELHORADO */}
+      {/* MODAL DE RELATÓRIO */}
       {showModal && (
         <div style={styles.modalOverlay} onClick={() => setShowModal(false)}>
           <div style={styles.modalContent} onClick={(e) => e.stopPropagation()} id="modal-report">
             <div style={styles.modalHeader} className="no-print">
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', padding: '10px', borderRadius: '14px' }}><BarChart3 size={22} color="#fff" /></div>
-                <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 800 }}>Relatório Comercial Detalhado</h2>
+                <div style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', padding: '10px', borderRadius: '14px' }}>
+                  <BarChart3 size={22} color="#fff" />
+                </div>
+                <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 800 }}>Relatório Comercial</h2>
               </div>
               <div style={{ display: 'flex', gap: '12px' }}>
-                <button style={styles.btnPrimary} onClick={() => window.print()}><Printer size={18} /> Imprimir PDF</button>
-                <button style={{ ...styles.actionBtn('#f1f5f9', '#64748b'), padding: '10px 14px' }} onClick={() => setShowModal(false)}><X size={22} /></button>
+                <button style={{ ...styles.actionBtn('#4f46e5', '#fff'), padding: '10px 20px' }} onClick={() => window.print()}>
+                  <Printer size={18} /> Imprimir PDF
+                </button>
+                <button style={{ ...styles.actionBtn('#f1f5f9', '#64748b'), padding: '10px 14px' }} onClick={() => setShowModal(false)}>
+                  <X size={22} />
+                </button>
               </div>
             </div>
-            
+
             <div style={styles.modalBody} className="report-container">
               <div className="report-header">
                 <h1 style={{ margin: 0, color: '#1e293b' }}>Logística TG - Relatório de Operações</h1>

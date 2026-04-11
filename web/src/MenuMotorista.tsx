@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { 
+  getAuth, 
+  createUserWithEmailAndPassword 
+} from 'firebase/auth';
+
 import { db, storage } from './firebase';
 import EscalaFolga from './EscalaFolga';
 import HistoricoViagens from './HistoricoViagens';
@@ -14,9 +19,9 @@ interface Motorista {
   cnhCategoria?: string;
   temMopp?: string;
   email?: string;
-  senha?: string; // Campo para senha de acesso ao app
-  telefone?: string;
+  senha?: string;
   fotoPerfilUrl?: string;
+  uid?: string;           // ← Novo campo para guardar o UID do Auth
   createdAt?: string;
 }
 
@@ -35,6 +40,8 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
   const [novaFoto, setNovaFoto] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+
+  const auth = getAuth();   // Instância do Authentication
 
   useEffect(() => {
     const fetchMotorista = async () => {
@@ -66,29 +73,70 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
   const handleSaveEdit = async () => {
     if (!editForm || !motorista) return;
     setUploading(true);
+
     try {
       let fotoUrlFinal = editForm.fotoPerfilUrl;
+
+      // Upload da foto se houver nova
       if (novaFoto) {
         const storageRef = ref(storage, `fotos-motoristas/${motorista.id}-${Date.now()}`);
         await uploadBytes(storageRef, novaFoto);
         fotoUrlFinal = await getDownloadURL(storageRef);
       }
+
       const motoristaRef = doc(db, 'motoristas', motorista.id);
-      
-      // Salva todos os dados, incluindo e-mail e senha para o futuro app
-      await updateDoc(motoristaRef, { 
+      const updatedData = { 
         ...editForm, 
         fotoPerfilUrl: fotoUrlFinal 
-      });
-      
-      setMotorista({ ...editForm, fotoPerfilUrl: fotoUrlFinal });
+      };
+
+      // ==================== CRIAÇÃO DO LOGIN NO AUTH ====================
+      if (editForm.email && editForm.senha && editForm.senha.length >= 6) {
+        try {
+          // Cria o usuário no Firebase Authentication
+          const userCredential = await createUserWithEmailAndPassword(
+            auth, 
+            editForm.email.trim(), 
+            editForm.senha
+          );
+
+          const newUid = userCredential.user.uid;
+
+          // Salva no Firestore com o UID real
+          await setDoc(motoristaRef, {
+            ...updatedData,
+            uid: newUid,           // importante para o app mobile
+            email: editForm.email.trim(),
+          }, { merge: true });
+
+          alert('✅ Motorista criado com sucesso no Authentication!');
+
+        } catch (authError: any) {
+          if (authError.code === 'auth/email-already-in-use') {
+            alert('⚠️ Este email já está em uso no Authentication. Os dados foram atualizados no Firestore.');
+            await updateDoc(motoristaRef, updatedData);
+          } else {
+            console.error('Erro no Auth:', authError);
+            alert(`❌ Erro ao criar login: ${authError.message}`);
+            // Mesmo com erro no Auth, salva os dados pessoais
+            await updateDoc(motoristaRef, updatedData);
+          }
+        }
+      } else {
+        // Se não preencheu email/senha, só atualiza dados normais
+        await updateDoc(motoristaRef, updatedData);
+        alert('✅ Dados pessoais atualizados com sucesso!');
+      }
+
+      // Atualiza o estado local
+      setMotorista({ ...updatedData, id: motorista.id });
       setShowEditModal(false);
       setNovaFoto(null);
       setPreviewUrl(null);
-      alert('✅ Motorista e credenciais de acesso atualizados com sucesso!');
+
     } catch (error) {
-      console.error(error);
-      alert('❌ Erro ao atualizar motorista');
+      console.error('Erro geral ao salvar:', error);
+      alert('❌ Erro ao salvar alterações');
     } finally {
       setUploading(false);
     }
@@ -97,7 +145,6 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
   if (loading) return <div style={loadingStyle}>Carregando informações do motorista...</div>;
   if (!motorista) return <div style={errorStyle}>Motorista não encontrado</div>;
 
-  // Navegação das Sub-Abas
   if (activeSubTab === 'escala') return <EscalaFolga motoristaId={motoristaId} onVoltar={() => setActiveSubTab(null)} />;
   if (activeSubTab === 'historico') return <HistoricoViagens motoristaCpf={motorista.cpf} onVoltar={() => setActiveSubTab(null)} />;
 
@@ -154,7 +201,7 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
         ))}
       </div>
 
-      {/* MODAL DE EDIÇÃO */}
+      {/* MODAL DE EDIÇÃO - com seção de login */}
       {showEditModal && editForm && (
         <div style={modalOverlay} onClick={() => setShowEditModal(false)}>
           <div style={modalContent} onClick={e => e.stopPropagation()}>
@@ -165,31 +212,46 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
             
             <div style={formSectionTitle}>Dados Pessoais</div>
             <div style={formGrid}>
-              <div><label style={labelStyle}>Nome Completo *</label><input type="text" value={editForm.nome} onChange={e => setEditForm({...editForm, nome: e.target.value})} style={inputField} /></div>
-              <div><label style={labelStyle}>CPF *</label><input type="text" value={editForm.cpf} onChange={e => setEditForm({...editForm, cpf: e.target.value})} style={inputField} /></div>
-              <div><label style={labelStyle}>WhatsApp</label><input type="text" value={editForm.whatsapp || ''} onChange={e => setEditForm({...editForm, whatsapp: e.target.value})} style={inputField} /></div>
-              <div><label style={labelStyle}>Cidade</label><input type="text" value={editForm.cidade || ''} onChange={e => setEditForm({...editForm, cidade: e.target.value})} style={inputField} /></div>
-              <div><label style={labelStyle}>CNH Categoria</label><input type="text" value={editForm.cnhCategoria || ''} onChange={e => setEditForm({...editForm, cnhCategoria: e.target.value.toUpperCase()})} style={inputField} maxLength={2} /></div>
-              <div><label style={labelStyle}>Possui MOPP?</label><select value={editForm.temMopp || 'Não'} onChange={e => setEditForm({...editForm, temMopp: e.target.value})} style={inputField}><option value="Não">Não</option><option value="Sim">Sim</option></select></div>
+              <div><label style={labelStyle}>Nome Completo *</label>
+                <input type="text" value={editForm.nome} onChange={e => setEditForm({...editForm, nome: e.target.value})} style={inputField} />
+              </div>
+              <div><label style={labelStyle}>CPF *</label>
+                <input type="text" value={editForm.cpf} onChange={e => setEditForm({...editForm, cpf: e.target.value})} style={inputField} />
+              </div>
+              <div><label style={labelStyle}>WhatsApp</label>
+                <input type="text" value={editForm.whatsapp || ''} onChange={e => setEditForm({...editForm, whatsapp: e.target.value})} style={inputField} />
+              </div>
+              <div><label style={labelStyle}>Cidade</label>
+                <input type="text" value={editForm.cidade || ''} onChange={e => setEditForm({...editForm, cidade: e.target.value})} style={inputField} />
+              </div>
+              <div><label style={labelStyle}>CNH Categoria</label>
+                <input type="text" value={editForm.cnhCategoria || ''} onChange={e => setEditForm({...editForm, cnhCategoria: e.target.value.toUpperCase()})} style={inputField} maxLength={2} />
+              </div>
+              <div><label style={labelStyle}>Possui MOPP?</label>
+                <select value={editForm.temMopp || 'Não'} onChange={e => setEditForm({...editForm, temMopp: e.target.value})} style={inputField}>
+                  <option value="Não">Não</option>
+                  <option value="Sim">Sim</option>
+                </select>
+              </div>
             </div>
 
             <div style={formSectionTitle}>Acesso ao Aplicativo (Login)</div>
             <div style={formGrid}>
               <div>
-                <label style={labelStyle}>E-mail de Login</label>
+                <label style={labelStyle}>E-mail de Login *</label>
                 <input 
                   type="email" 
-                  placeholder="exemplo@motorista.com"
+                  placeholder="exemplo@tg.com"
                   value={editForm.email || ''} 
                   onChange={e => setEditForm({...editForm, email: e.target.value})} 
                   style={inputField} 
                 />
               </div>
               <div>
-                <label style={labelStyle}>Senha de Acesso</label>
+                <label style={labelStyle}>Senha de Acesso *</label>
                 <input 
                   type="text" 
-                  placeholder="Defina uma senha"
+                  placeholder="Mínimo 6 caracteres"
                   value={editForm.senha || ''} 
                   onChange={e => setEditForm({...editForm, senha: e.target.value})} 
                   style={inputField} 
@@ -205,7 +267,9 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
 
             <div style={modalActions}>
               <button onClick={() => setShowEditModal(false)} style={cancelBtn}>Cancelar</button>
-              <button onClick={handleSaveEdit} style={saveBtn} disabled={uploading}>{uploading ? 'Salvando...' : 'Salvar Alterações'}</button>
+              <button onClick={handleSaveEdit} style={saveBtn} disabled={uploading}>
+                {uploading ? 'Salvando...' : 'Salvar Alterações'}
+              </button>
             </div>
           </div>
         </div>
@@ -214,6 +278,7 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
   );
 };
 
+// Menu Items (mantido igual)
 const menuItems = [
   { id: 'programar', title: "Programar Motorista", icon: "📅", desc: "Agendar viagens e rotas", color: "#3b82f6", bgColor: "#eff6ff" },
   { id: 'historico', title: "Histórico de Viagens", icon: "🛣️", desc: "Todas as viagens realizadas", color: "#10b981", bgColor: "#ecfdf5" },
@@ -223,7 +288,7 @@ const menuItems = [
   { id: 'hodometro', title: "Hodômetro", icon: "🔢", desc: "Controle de quilometragem", color: "#06b6d4", bgColor: "#ecfeff" },
 ];
 
-// Estilos
+// Estilos (mantidos iguais ao seu código original)
 const containerStyle: React.CSSProperties = { minHeight: '100vh', background: 'linear-gradient(135deg, #f8fafc, #e0e7ff)', padding: '30px 20px' };
 const voltarBtn: React.CSSProperties = { padding: '10px 20px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '12px', cursor: 'pointer', marginBottom: '20px', fontWeight: 600 };
 const headerStyle: React.CSSProperties = { display: 'flex', gap: '40px', background: 'white', padding: '40px', borderRadius: '24px', boxShadow: '0 15px 40px rgba(0,0,0,0.1)', maxWidth: '1200px', margin: '0 auto 40px' };

@@ -13,53 +13,61 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from './config/firebase';
+import { auth } from './firebase';   // Ajuste o caminho se necessário
 
 const LoginScreen = ({ navigation }: any) => {
-  const [cpf, setCpf] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const formatCPF = (text: string): string => {
-    let value = text.replace(/\D/g, '');
-    if (value.length > 11) value = value.slice(0, 11);
-
-    value = value.replace(/(\d{3})(\d)/, '$1.$2');
-    value = value.replace(/(\d{3})(\d)/, '$1.$2');
-    value = value.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-    return value;
-  };
-
   const handleLogin = async () => {
-    if (!cpf || !password) {
-      Alert.alert('Erro', 'Por favor, preencha CPF e senha.');
+    if (!email || !password) {
+      Alert.alert('Erro', 'Por favor, preencha o email e a senha.');
       return;
     }
 
-    const cleanCPF = cpf.replace(/\D/g, '');
-    if (cleanCPF.length !== 11) {
-      Alert.alert('Erro', 'CPF inválido. Digite 11 números.');
+    // Validação simples de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Erro', 'Por favor, digite um email válido.');
       return;
     }
-
-    const email = `${cleanCPF}@tglogistica.com`;
 
     setLoading(true);
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      navigation.replace('Home'); // Vai para a tela Home
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      Alert.alert('Sucesso', `Bem-vindo!`);
+
+      // Navega para o Menu do Motorista passando os dados do usuário
+      navigation.replace('MenuMotorista', {
+        userId: user.uid,
+        email: user.email,
+      });
+
     } catch (error: any) {
-      console.error(error);
+      console.error('Erro no login:', error);
       let message = 'Erro ao fazer login. Tente novamente.';
 
-      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
-        message = 'CPF ou senha incorretos.';
-      } else if (error.code === 'auth/user-not-found') {
-        message = 'Usuário não encontrado.';
-      } else if (error.code === 'auth/invalid-email') {
-        message = 'CPF inválido.';
+      switch (error.code) {
+        case 'auth/invalid-credential':
+        case 'auth/wrong-password':
+          message = 'Email ou senha incorretos.';
+          break;
+        case 'auth/user-not-found':
+          message = 'Usuário não encontrado. Verifique seu email.';
+          break;
+        case 'auth/invalid-email':
+          message = 'Email inválido.';
+          break;
+        case 'auth/too-many-requests':
+          message = 'Muitas tentativas. Aguarde alguns minutos e tente novamente.';
+          break;
+        default:
+          message = 'Ocorreu um erro inesperado. Tente novamente.';
       }
 
       Alert.alert('Falha no login', message);
@@ -75,21 +83,22 @@ const LoginScreen = ({ navigation }: any) => {
     >
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.logoContainer}>
-          <Ionicons name="truck" size={90} color="#0A1F3D" />
+          <Ionicons name="bus" size={90} color="#0A1F3D" />
           <Text style={styles.title}>TG Logística</Text>
           <Text style={styles.subtitle}>Aplicativo do Motorista</Text>
         </View>
 
         <View style={styles.formContainer}>
-          <Text style={styles.label}>CPF</Text>
+          <Text style={styles.label}>Email</Text>
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.input}
-              placeholder="000.000.000-00"
-              keyboardType="numeric"
-              value={cpf}
-              onChangeText={(text) => setCpf(formatCPF(text))}
-              maxLength={14}
+              placeholder="Digite seu email"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              value={email}
+              onChangeText={setEmail}
             />
           </View>
 
@@ -120,7 +129,7 @@ const LoginScreen = ({ navigation }: any) => {
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" size="large" />
+              <ActivityIndicator color="#fff" size="small" />
             ) : (
               <Text style={styles.loginButtonText}>ENTRAR</Text>
             )}

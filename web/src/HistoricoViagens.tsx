@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+// Importamos collectionGroup para buscar em sub-coleções com o mesmo nome
+import { collectionGroup, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { Truck, Package, ArrowRightLeft, Search, ChevronRight } from 'lucide-react';
 
 interface CargaData {
@@ -30,12 +31,28 @@ const HistoricoViagens: React.FC<HistoricoViagensProps> = ({ motoristaCpf, onVol
 
   useEffect(() => {
     if (!motoristaCpf) return;
-    const q = query(collection(db, "cargas_programadas"), where("cpf", "==", motoristaCpf), orderBy("criadoEm", "desc"));
+
+    // MODIFICAÇÃO AQUI: 
+    // Usamos collectionGroup("cargas") para buscar dentro de qualquer sub-coleção chamada "cargas"
+    // filtrando pelo campo "cpf" que está dentro de cada documento de carga.
+    const q = query(
+      collectionGroup(db, "cargas"), 
+      where("cpf", "==", motoristaCpf), 
+      orderBy("criadoEm", "desc")
+    );
+
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const docs: CargaData[] = [];
-      querySnapshot.forEach((doc) => { docs.push({ id: doc.id, ...doc.data() } as CargaData); });
-      setViagens(docs); setLoading(false);
-    }, (error) => { console.error("Erro ao carregar histórico:", error); setLoading(false); });
+      querySnapshot.forEach((doc) => { 
+        docs.push({ id: doc.id, ...doc.data() } as CargaData); 
+      });
+      setViagens(docs); 
+      setLoading(false);
+    }, (error) => { 
+      console.error("Erro ao carregar histórico:", error); 
+      setLoading(false); 
+    });
+
     return () => unsubscribe();
   }, [motoristaCpf]);
 

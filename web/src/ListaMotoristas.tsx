@@ -1,15 +1,15 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { db } from './firebase';
-import { 
-  collection, 
-  onSnapshot, 
-  query, 
-  where, 
+import {
+  collection,
+  onSnapshot,
+  query,
+  where,
   getDocs,
-  deleteDoc, 
-  doc 
+  deleteDoc,
+  doc
 } from 'firebase/firestore';
-import { 
+import {
   Truck, MapPin, Calendar, Clock, AlertCircle, BarChart3, Printer, X, Search, UserCheck, UserMinus
 } from 'lucide-react';
 
@@ -32,6 +32,7 @@ interface CargaProgramada {
   entregaCidade?: string;
   placa: string;
   status: 'programada' | 'finalizada';
+  criadoEm?: any;
 }
 
 interface ListaMotoristasProps {
@@ -53,8 +54,12 @@ const ListaMotoristas: React.FC<ListaMotoristasProps> = ({ onSelectMotorista }) 
     const unsub = onSnapshot(collection(db, 'motoristas'), (snap) => {
       const lista = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Motorista));
       setMotoristas(lista);
-      if (lista.length > 0) buscarCargasDeMotoristas(lista);
-      else setLoadingCargas(false);
+      if (lista.length > 0) {
+        buscarCargasDeMotoristas(lista);
+      } else {
+        setCargasPorMotorista({});
+        setLoadingCargas(false);
+      }
     });
     return () => unsub();
   }, []);
@@ -62,29 +67,38 @@ const ListaMotoristas: React.FC<ListaMotoristasProps> = ({ onSelectMotorista }) 
   const buscarCargasDeMotoristas = async (listaMotoristas: Motorista[]) => {
     setLoadingCargas(true);
     const novasCargas: Record<string, CargaProgramada[]> = {};
+    const promises: Promise<void>[] = [];
 
-    for (const motorista of listaMotoristas) {
-      if (!motorista.cpf) continue;
-      try {
-        // AJUSTE: Buscar apenas cargas que NÃO estão finalizadas para definir o status de "Programado"
-        const q = query(
-          collection(db, 'cargas_programadas'), 
-          where('cpf', '==', motorista.cpf),
-          where('status', '==', 'programada')
-        );
-        const snapshot = await getDocs(q);
+    listaMotoristas.forEach((motorista) => {
+      if (!motorista.id) return;
+
+      // REMOVIDO O ORDERBY PARA EVITAR ERRO DE ÍNDICE
+      // Buscamos todas as cargas programadas e ordenamos no código
+      const q = query(
+        collection(db, 'motoristas', motorista.id, 'cargas'),
+        where('status', '==', 'programada')
+      );
+
+      const promise = getDocs(q).then((snapshot) => {
         const cargas: CargaProgramada[] = [];
         snapshot.forEach(doc => cargas.push({ id: doc.id, ...doc.data() } as CargaProgramada));
-
+        
         if (cargas.length > 0) {
-          // Ordenar pela data de entrega mais próxima (ou futura)
-          cargas.sort((a, b) => a.entregaData.localeCompare(b.entregaData));
+          // Ordenamos no código pela data de criação (mais recente primeiro)
+          cargas.sort((a, b) => {
+            const timeA = a.criadoEm?.seconds || 0;
+            const timeB = b.criadoEm?.seconds || 0;
+            return timeB - timeA;
+          });
           novasCargas[motorista.id] = [cargas[0]];
         }
-      } catch (err) {
-        console.error(err);
-      }
-    }
+      }).catch((err) => {
+        console.error(`Erro ao buscar cargas para o motorista ${motorista.nome}:`, err);
+      });
+      promises.push(promise);
+    });
+
+    await Promise.all(promises);
     setCargasPorMotorista(novasCargas);
     setLoadingCargas(false);
   };
@@ -110,13 +124,12 @@ const ListaMotoristas: React.FC<ListaMotoristasProps> = ({ onSelectMotorista }) 
     setTimeout(() => notification.remove(), 3200);
   };
 
-  // Filtros
   const motoristasFiltrados = useMemo(() => {
     return motoristas.filter(m => {
       const temCargaAtiva = !!cargasPorMotorista[m.id];
       const temMopp = m.temMopp === 'Sim';
 
-      const matchTexto = 
+      const matchTexto =
         m.nome?.toLowerCase().includes(filtroTexto.toLowerCase()) ||
         m.cpf?.includes(filtroTexto) ||
         m.cidade?.toLowerCase().includes(filtroTexto.toLowerCase());
@@ -155,6 +168,57 @@ const ListaMotoristas: React.FC<ListaMotoristasProps> = ({ onSelectMotorista }) 
     onSelectMotorista(motorista.id);
   };
 
+  // Estilos (mantidos do código original)
+  const containerStyle: React.CSSProperties = { padding: '40px 20px', backgroundColor: '#f8fafc', minHeight: '100vh', fontFamily: 'Inter, sans-serif' };
+  const headerStyle: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' };
+  const titleStyle: React.CSSProperties = { fontSize: '32px', fontWeight: 900, color: '#1e293b', margin: 0, display: 'flex', alignItems: 'center', gap: '16px' };
+  const subtitleStyle: React.CSSProperties = { margin: '8px 0 0 0', color: '#64748b', fontSize: '14px' };
+  const reportBtnStyle: React.CSSProperties = { backgroundColor: '#4f46e5', color: '#fff', padding: '10px 20px', borderRadius: '12px', border: 'none', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' };
+  const statsContainerStyle: React.CSSProperties = { display: 'flex', gap: '24px', backgroundColor: '#fff', padding: '12px 24px', borderRadius: '16px', border: '1px solid #e2e8f0' };
+  const statItemStyle: React.CSSProperties = { textAlign: 'center' };
+  const statNumberStyle: React.CSSProperties = { fontSize: '20px', fontWeight: 800, color: '#1e293b', margin: 0 };
+  const statLabelStyle: React.CSSProperties = { fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, marginTop: '4px' };
+  const filtersContainerStyle: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '20px' };
+  const searchWrapperStyle: React.CSSProperties = { position: 'relative', flexGrow: 1, maxWidth: '400px' };
+  const searchIconStyle: React.CSSProperties = { position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' };
+  const searchInputStyle: React.CSSProperties = { width: '100%', padding: '12px 12px 12px 48px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '15px', outline: 'none' };
+  const clearButtonStyle: React.CSSProperties = { position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '18px' };
+  const selectsContainerStyle: React.CSSProperties = { display: 'flex', gap: '16px', flexWrap: 'wrap' };
+  const filterGroupStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '6px' };
+  const filterLabelStyle: React.CSSProperties = { fontSize: '12px', fontWeight: 700, color: '#64748b' };
+  const selectStyle: React.CSSProperties = { padding: '10px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '14px', outline: 'none', backgroundColor: '#fff' };
+  const emptyStateStyle: React.CSSProperties = { textAlign: 'center', padding: '60px 20px', color: '#64748b', backgroundColor: '#fff', borderRadius: '24px', border: '1px solid #f1f5f9', marginTop: '32px' };
+  const gridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px' };
+  const cardStyle: React.CSSProperties = { backgroundColor: '#fff', borderRadius: '24px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05)', border: '1px solid #f1f5f9', overflow: 'hidden', cursor: 'pointer', transition: 'all 0.2s' };
+  const fotoWrapperStyle: React.CSSProperties = { height: '120px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '48px', fontWeight: 800 };
+  const fotoStyle: React.CSSProperties = { width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', top: 0, left: 0 };
+  const initialsStyle: React.CSSProperties = { zIndex: 1 };
+  const statusBadgeStyle: React.CSSProperties = { position: 'absolute', bottom: '12px', right: '12px', backgroundColor: 'rgba(0,0,0,0.6)', color: '#fff', padding: '6px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: 600 };
+  const contentStyle: React.CSSProperties = { padding: '24px' };
+  const nomeStyle: React.CSSProperties = { fontSize: '20px', fontWeight: 800, color: '#1e293b', margin: '0 0 4px 0' };
+  const cpfStyle: React.CSSProperties = { fontSize: '14px', color: '#64748b', margin: '0 0 16px 0' };
+  const infoGridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' };
+  const infoItemStyle: React.CSSProperties = { fontSize: '13px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' };
+  const programacaoContainerStyle: React.CSSProperties = { borderTop: '1px solid #f1f5f9', paddingTop: '20px', marginTop: '20px' };
+  const programacaoHeaderStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' };
+  const programacaoTitleStyle: React.CSSProperties = { fontSize: '12px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', margin: 0 };
+  const programacaoStatusStyle: React.CSSProperties = { padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 700 };
+  const programacaoInfoStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#475569', marginBottom: '8px' };
+  const programacaoPlacaStyle: React.CSSProperties = { fontSize: '14px', fontWeight: 700, color: '#1e293b' };
+  const actionButtonsStyle: React.CSSProperties = { display: 'flex', gap: '8px', marginTop: '20px' };
+  const actionButtonStyle: React.CSSProperties = { padding: '8px 16px', borderRadius: '10px', border: 'none', backgroundColor: '#f8fafc', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600 };
+  const deleteConfirmModalStyle: React.CSSProperties = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 };
+  const deleteConfirmContentStyle: React.CSSProperties = { backgroundColor: '#fff', padding: '30px', borderRadius: '15px', textAlign: 'center', boxShadow: '0 5px 15px rgba(0,0,0,0.3)' };
+  const deleteConfirmButtonsStyle: React.CSSProperties = { display: 'flex', justifyContent: 'center', gap: '15px', marginTop: '25px' };
+  const deleteConfirmBtnStyle: React.CSSProperties = { padding: '10px 20px', borderRadius: '10px', border: 'none', cursor: 'pointer', fontWeight: 600 };
+  const reportModalOverlayStyle: React.CSSProperties = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' };
+  const reportModalContentStyle: React.CSSProperties = { backgroundColor: '#fff', borderRadius: '28px', width: '100%', maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)', position: 'relative' };
+  const reportModalHeaderStyle: React.CSSProperties = { padding: '24px 32px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, backgroundColor: '#fff', zIndex: 10, borderTopLeftRadius: '28px', borderTopRightRadius: '28px' };
+  const reportModalBodyStyle: React.CSSProperties = { padding: '32px' };
+  const reportHeaderStyle: React.CSSProperties = { borderBottom: '2px solid #1e293b', marginBottom: '20px', paddingBottom: '10px' };
+  const reportStatGridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '20px' };
+  const reportStatBoxStyle: React.CSSProperties = { border: '1px solid #e2e8f0', padding: '10px', borderRadius: '8px' };
+
   return (
     <div style={containerStyle}>
       <style>{`
@@ -167,6 +231,8 @@ const ListaMotoristas: React.FC<ListaMotoristasProps> = ({ onSelectMotorista }) 
           th, td { border: 1px solid #cbd5e1; padding: 12px; text-align: left; }
           th { background-color: #f1f5f9; }
         }
+        .spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>
 
       <div style={headerStyle}>
@@ -232,7 +298,12 @@ const ListaMotoristas: React.FC<ListaMotoristasProps> = ({ onSelectMotorista }) 
       </div>
 
       {/* Lista de Cards */}
-      {motoristasFiltrados.length === 0 ? (
+      {loadingCargas ? (
+        <div style={emptyStateStyle}>
+          <Clock size={48} color="#94a3b8" className="spin" />
+          <h3>Carregando informações das cargas...</h3>
+        </div>
+      ) : motoristasFiltrados.length === 0 ? (
         <div style={emptyStateStyle}>
           <AlertCircle size={48} color="#94a3b8" />
           <h3>Nenhum motorista encontrado com os filtros aplicados</h3>
@@ -266,53 +337,35 @@ const ListaMotoristas: React.FC<ListaMotoristasProps> = ({ onSelectMotorista }) 
                     <div style={infoItemStyle}>📱 {m.whatsapp || m.telefone || 'Não informado'}</div>
                   </div>
 
-                  {/* Programação - Visual Melhorado */}
+                  {/* Programação */}
                   <div style={programacaoContainerStyle}>
                     <div style={programacaoHeaderStyle}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Clock size={18} color="#64748b" />
-                        <span style={programacaoTitleStyle}>Programação Atual</span>
-                      </div>
+                      <Truck size={16} color="#475569" />
+                      <h4 style={programacaoTitleStyle}>Programação</h4>
+                      <span style={{ ...programacaoStatusStyle, backgroundColor: temProgramacao ? '#ecfdf5' : '#fef2f2', color: temProgramacao ? '#10b981' : '#ef4444' }}>
+                        {temProgramacao ? 'Programado' : 'Disponível'}
+                      </span>
                     </div>
-
-                    {loadingCargas ? (
-                      <div style={skeletonStyle}>Carregando programação...</div>
-                    ) : temProgramacao && cargaRecente ? (
-                      <div style={cargaCardStyle}>
-                        <div style={cargaHeaderStyle}>
-                          <div style={programadoBadgeStyle}>
-                            <Truck size={16} /> PROGRAMADO
-                          </div>
-                          <div style={dataStyle}>
-                            <Calendar size={16} style={{ marginRight: '6px' }} />
-                            {cargaRecente.entregaData}
-                          </div>
-                        </div>
-
-                        <p style={empresaStyle}>{cargaRecente.entregaLocal}</p>
-
-                        {cargaRecente.entregaCidade && (
-                          <p style={cidadeEntregaStyle}>
-                            📍 {cargaRecente.entregaCidade}
-                          </p>
-                        )}
-
-                        <div style={placaContainerStyle}>
-                          <Truck size={18} color="#3b82f6" />
-                          <span style={placaStyle}>{cargaRecente.placa}</span>
-                        </div>
-                      </div>
+                    {temProgramacao && cargaRecente ? (
+                      <>
+                        <p style={programacaoInfoStyle}><Calendar size={14} /> {cargaRecente.entregaData}</p>
+                        <p style={programacaoInfoStyle}><MapPin size={14} /> {cargaRecente.entregaCidade} - {cargaRecente.entregaLocal}</p>
+                        <p style={programacaoInfoStyle}><Truck size={14} /> <span style={programacaoPlacaStyle}>{cargaRecente.placa}</span></p>
+                      </>
                     ) : (
-                      <div style={semProgramacaoStyle}>
-                        <UserCheck size={28} color="#10b981" />
-                        <p style={{ color: '#10b981' }}>Disponível / Sem programação</p>
-                      </div>
+                      <p style={{ fontSize: '13px', color: '#64748b' }}>Nenhuma carga programada no momento.</p>
                     )}
                   </div>
 
-                  <div style={actionsStyle}>
-                    <button onClick={() => setShowDeleteConfirm(m.id)} style={deleteBtnStyle} disabled={loading}>
-                      🗑️ Excluir
+                  <div style={actionButtonsStyle}>
+                    <button style={actionButtonStyle} onClick={() => onSelectMotorista(m.id)}>
+                      <UserCheck size={14} /> Ver Detalhes
+                    </button>
+                    <button
+                      style={{ ...actionButtonStyle, backgroundColor: '#fef2f2', color: '#ef4444' }}
+                      onClick={() => setShowDeleteConfirm(m.id)}
+                    >
+                      <UserMinus size={14} /> Excluir
                     </button>
                   </div>
                 </div>
@@ -322,65 +375,106 @@ const ListaMotoristas: React.FC<ListaMotoristasProps> = ({ onSelectMotorista }) 
         </div>
       )}
 
-      {/* Modal de Relatório de Status */}
+      {/* Modal de Confirmação de Exclusão */}
+      {showDeleteConfirm && (
+        <div style={deleteConfirmModalStyle}>
+          <div style={deleteConfirmContentStyle}>
+            <h3 style={{ color: '#ef4444', marginBottom: '20px' }}>Confirmar Exclusão</h3>
+            <p>Tem certeza que deseja excluir este motorista? Esta ação é irreversível.</p>
+            <div style={deleteConfirmButtonsStyle}>
+              <button
+                style={{ ...deleteConfirmBtnStyle, backgroundColor: '#e2e8f0', color: '#475569' }}
+                onClick={() => setShowDeleteConfirm(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                style={{ ...deleteConfirmBtnStyle, backgroundColor: '#ef4444', color: '#fff' }}
+                onClick={() => handleDelete(showDeleteConfirm)}
+                disabled={loading}
+              >
+                {loading ? 'Excluindo...' : 'Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE RELATÓRIO */}
       {showReportModal && (
-        <div style={modalOverlayStyle} onClick={() => setShowReportModal(false)}>
-          <div style={reportModalStyle} onClick={e => e.stopPropagation()} id="modal-report">
-            <div style={modalHeaderStyle} className="no-print">
+        <div style={reportModalOverlayStyle} onClick={() => setShowReportModal(false)}>
+          <div style={reportModalContentStyle} onClick={(e) => e.stopPropagation()} id="modal-report">
+            <div style={reportModalHeaderStyle} className="no-print">
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <BarChart3 size={24} color="#4f46e5" />
-                <h2 style={{ margin: 0 }}>Relatório de Status dos Motoristas</h2>
+                <div style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', padding: '10px', borderRadius: '14px' }}>
+                  <BarChart3 size={22} color="#fff" />
+                </div>
+                <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 800 }}>Relatório de Status de Motoristas</h2>
               </div>
               <div style={{ display: 'flex', gap: '12px' }}>
-                <button style={printBtnStyle} onClick={() => window.print()}>
+                <button style={{ ...reportBtnStyle, padding: '10px 20px' }} onClick={() => window.print()}>
                   <Printer size={18} /> Imprimir PDF
                 </button>
-                <button style={closeBtnStyle} onClick={() => setShowReportModal(false)}>
-                  <X size={24} />
+                <button style={{ ...actionButtonStyle, padding: '10px 14px' }} onClick={() => setShowReportModal(false)}>
+                  <X size={22} />
                 </button>
               </div>
             </div>
 
-            <div style={modalBodyStyle}>
-              <div style={{ marginBottom: '20px' }}>
-                <p><strong>Total de Motoristas:</strong> {stats.total}</p>
-                <p><strong>Programados:</strong> {stats.comProgramacao}</p>
-                <p><strong>Disponíveis:</strong> {stats.semProgramacao}</p>
+            <div style={reportModalBodyStyle} className="report-container">
+              <div style={reportHeaderStyle}>
+                <h1 style={{ margin: 0, color: '#1e293b' }}>Relatório de Status de Motoristas</h1>
+                <p style={{ color: '#64748b' }}>Gerado em: {new Date().toLocaleString('pt-BR')}</p>
               </div>
 
-              <table style={tableStyle}>
+              <div style={reportStatGridStyle}>
+                <div style={reportStatBoxStyle}>
+                  <p style={statLabelStyle}>Total de Motoristas</p>
+                  <p style={statNumberStyle}>{stats.total}</p>
+                </div>
+                <div style={reportStatBoxStyle}>
+                  <p style={statLabelStyle}>Com Programação</p>
+                  <p style={{...statNumberStyle, color: '#10b981'}}>{stats.comProgramacao}</p>
+                </div>
+                <div style={reportStatBoxStyle}>
+                  <p style={statLabelStyle}>Sem Programação</p>
+                  <p style={{...statNumberStyle, color: '#ef4444'}}>{stats.semProgramacao}</p>
+                </div>
+                <div style={reportStatBoxStyle}>
+                  <p style={statLabelStyle}>Com MOPP</p>
+                  <p style={{...statNumberStyle, color: '#2563eb'}}>{stats.comMopp}</p>
+                </div>
+              </div>
+
+              <h3 style={{ fontSize: '16px', fontWeight: 800, marginBottom: '12px', color: '#1e293b' }}>Detalhes dos Motoristas</h3>
+              <table>
                 <thead>
                   <tr>
-                    <th>Nome do Motorista</th>
+                    <th>Nome</th>
                     <th>CPF</th>
                     <th>Cidade</th>
-                    <th>Status</th>
-                    <th>Carga Atual / Placa</th>
+                    <th>MOPP</th>
+                    <th>Status Carga</th>
+                    <th>Próxima Entrega</th>
+                    <th>Placa Carga</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {motoristas.sort((a, b) => a.nome.localeCompare(b.nome)).map(m => {
+                  {motoristas.map(m => {
                     const carga = cargasPorMotorista[m.id]?.[0];
+                    const statusCarga = carga ? 'Com Carga' : 'Disponível';
+                    const proximaEntrega = carga ? `${carga.entregaCidade} - ${carga.entregaLocal} (${carga.entregaData})` : 'N/A';
+                    const placaCarga = carga ? carga.placa : 'N/A';
+
                     return (
                       <tr key={m.id}>
-                        <td style={{ fontWeight: '600' }}>{m.nome}</td>
+                        <td>{m.nome}</td>
                         <td>{m.cpf}</td>
-                        <td>{m.cidade || '---'}</td>
-                        <td>
-                          <span style={{ 
-                            padding: '4px 10px', 
-                            borderRadius: '20px', 
-                            fontSize: '12px', 
-                            fontWeight: '700',
-                            backgroundColor: carga ? '#ecfdf5' : '#fef2f2',
-                            color: carga ? '#10b981' : '#ef4444'
-                          }}>
-                            {carga ? 'PROGRAMADO' : 'SEM PROGRAMAÇÃO'}
-                          </span>
-                        </td>
-                        <td>
-                          {carga ? `${carga.entregaLocal} (${carga.placa})` : '---'}
-                        </td>
+                        <td>{m.cidade || 'N/A'}</td>
+                        <td>{m.temMopp || 'N/A'}</td>
+                        <td style={{ color: carga ? '#10b981' : '#ef4444', fontWeight: 700 }}>{statusCarga}</td>
+                        <td>{proximaEntrega}</td>
+                        <td>{placaCarga}</td>
                       </tr>
                     );
                   })}
@@ -390,90 +484,8 @@ const ListaMotoristas: React.FC<ListaMotoristasProps> = ({ onSelectMotorista }) 
           </div>
         </div>
       )}
-
-      {/* Modal de exclusão */}
-      {showDeleteConfirm && (
-        <div style={modalOverlayStyle} onClick={() => setShowDeleteConfirm(null)}>
-          <div style={confirmModalStyle} onClick={e => e.stopPropagation()}>
-            <div style={confirmIconStyle}>⚠️</div>
-            <h3>Confirmar exclusão</h3>
-            <p style={confirmTextStyle}>Tem certeza que deseja excluir este motorista?</p>
-            <div style={modalButtonsStyle}>
-              <button onClick={() => setShowDeleteConfirm(null)} style={modalCancelButton}>Cancelar</button>
-              <button onClick={() => handleDelete(showDeleteConfirm)} style={modalConfirmDeleteButton} disabled={loading}>
-                {loading ? 'Excluindo...' : 'Sim, Excluir'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
-
-/* ====================== ESTILOS ====================== */
-const containerStyle: React.CSSProperties = { minHeight: '100vh', background: '#f8fafc', padding: '40px 24px' };
-const headerStyle: React.CSSProperties = { maxWidth: '1280px', margin: '0 auto 30px auto', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '20px' };
-const titleStyle: React.CSSProperties = { fontSize: '34px', fontWeight: '700', color: '#0f172a', margin: 0 };
-const subtitleStyle: React.CSSProperties = { color: '#64748b', fontSize: '16px', margin: 0 };
-const statsContainerStyle: React.CSSProperties = { display: 'flex', gap: '16px', flexWrap: 'wrap' };
-const statItemStyle: React.CSSProperties = { background: 'white', padding: '12px 18px', borderRadius: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.06)', textAlign: 'center', minWidth: '90px' };
-const statNumberStyle: React.CSSProperties = { fontSize: '26px', fontWeight: '700' };
-const statLabelStyle: React.CSSProperties = { fontSize: '12px', color: '#64748b', fontWeight: '600' };
-
-const reportBtnStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 20px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: '14px', fontWeight: '600', cursor: 'pointer', boxShadow: '0 4px 12px rgba(79, 70, 229, 0.3)' };
-
-const filtersContainerStyle: React.CSSProperties = { maxWidth: '1280px', margin: '0 auto 40px auto', display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'end' };
-const searchWrapperStyle: React.CSSProperties = { position: 'relative', flex: '1', minWidth: '300px' };
-const searchIconStyle: React.CSSProperties = { position: 'absolute', left: '18px', top: '50%', transform: 'translateY(-50%)', fontSize: '20px', color: '#64748b' };
-const searchInputStyle: React.CSSProperties = { width: '100%', padding: '16px 50px', border: '2px solid #e2e8f0', borderRadius: '16px', fontSize: '16px', background: 'white', outline: 'none' };
-const clearButtonStyle: React.CSSProperties = { position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', background: '#e2e8f0', border: 'none', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer' };
-const selectsContainerStyle: React.CSSProperties = { display: 'flex', gap: '16px', flexWrap: 'wrap' };
-const filterGroupStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '6px' };
-const filterLabelStyle: React.CSSProperties = { fontSize: '12px', fontWeight: '700', color: '#64748b' };
-const selectStyle: React.CSSProperties = { padding: '12px 16px', borderRadius: '12px', border: '2px solid #e2e8f0', background: 'white', fontSize: '15px', cursor: 'pointer' };
-
-const gridStyle: React.CSSProperties = { maxWidth: '1280px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '28px' };
-const cardStyle: React.CSSProperties = { background: 'white', borderRadius: '24px', overflow: 'hidden', boxShadow: '0 10px 25px rgba(0,0,0,0.08)', transition: 'all 0.3s ease', cursor: 'pointer' };
-const fotoWrapperStyle: React.CSSProperties = { height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' };
-const fotoStyle: React.CSSProperties = { width: '110px', height: '110px', borderRadius: '50%', objectFit: 'cover', border: '5px solid white', boxShadow: '0 6px 20px rgba(0,0,0,0.2)' };
-const initialsStyle: React.CSSProperties = { width: '110px', height: '110px', borderRadius: '50%', fontSize: '42px', fontWeight: '700', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '5px solid white' };
-const statusBadgeStyle: React.CSSProperties = { position: 'absolute', top: '20px', right: '20px', background: 'white', padding: '6px 14px', borderRadius: '30px', fontSize: '13px', fontWeight: '600', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' };
-const contentStyle: React.CSSProperties = { padding: '24px' };
-const nomeStyle: React.CSSProperties = { fontSize: '22px', fontWeight: '700', color: '#0f172a', marginBottom: '4px' };
-const cpfStyle: React.CSSProperties = { color: '#64748b', fontSize: '14px', marginBottom: '20px' };
-const infoGridStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px', textAlign: 'left' };
-const infoItemStyle: React.CSSProperties = { fontSize: '15px', color: '#334155', display: 'flex', alignItems: 'center', gap: '10px' };
-const programacaoContainerStyle: React.CSSProperties = { marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #f1f5f9' };
-const programacaoHeaderStyle: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' };
-const programacaoTitleStyle: React.CSSProperties = { fontSize: '15px', fontWeight: '700', color: '#64748b' };
-const cargaCardStyle: React.CSSProperties = { backgroundColor: '#f8fafc', border: '2px solid #e0f2fe', borderRadius: '18px', padding: '18px', boxShadow: '0 4px 15px rgba(224, 242, 254, 0.5)' };
-const cargaHeaderStyle: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' };
-const programadoBadgeStyle: React.CSSProperties = { backgroundColor: '#10b981', color: 'white', fontSize: '12.5px', fontWeight: '700', padding: '6px 16px', borderRadius: '9999px', display: 'flex', alignItems: 'center', gap: '6px' };
-const dataStyle: React.CSSProperties = { fontSize: '14px', color: '#10b981', fontWeight: '600', display: 'flex', alignItems: 'center' };
-const empresaStyle: React.CSSProperties = { fontSize: '16px', fontWeight: '700', color: '#1e293b', marginBottom: '8px', lineHeight: '1.3' };
-const cidadeEntregaStyle: React.CSSProperties = { fontSize: '14.5px', color: '#475569', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' };
-const placaContainerStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: 'white', padding: '10px 14px', borderRadius: '12px', border: '1px solid #e2e8f0' };
-const placaStyle: React.CSSProperties = { fontSize: '15.5px', fontWeight: '700', color: '#1e40af' };
-const semProgramacaoStyle: React.CSSProperties = { backgroundColor: '#f8fafc', border: '2px dashed #cbd5e1', borderRadius: '16px', padding: '32px 20px', textAlign: 'center', color: '#64748b', fontWeight: '600' };
-const skeletonStyle: React.CSSProperties = { backgroundColor: '#f1f5f9', borderRadius: '12px', padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' };
-const actionsStyle: React.CSSProperties = { display: 'flex', justifyContent: 'center', marginTop: '24px' };
-const deleteBtnStyle: React.CSSProperties = { padding: '12px 32px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '14px', fontWeight: '600', cursor: 'pointer', fontSize: '15px' };
-const emptyStateStyle: React.CSSProperties = { textAlign: 'center', padding: '80px 20px', color: '#64748b' };
-
-const modalOverlayStyle: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, backdropFilter: 'blur(6px)', padding: '20px' };
-const confirmModalStyle: React.CSSProperties = { background: 'white', borderRadius: '24px', padding: '40px 32px', width: '90%', maxWidth: '420px', textAlign: 'center' };
-const confirmIconStyle: React.CSSProperties = { fontSize: '60px', marginBottom: '20px' };
-const confirmTextStyle: React.CSSProperties = { color: '#64748b', lineHeight: '1.6', marginBottom: '30px' };
-const modalButtonsStyle: React.CSSProperties = { display: 'flex', gap: '16px' };
-const modalCancelButton: React.CSSProperties = { flex: 1, padding: '14px', background: '#e2e8f0', border: 'none', borderRadius: '14px', fontWeight: '600', cursor: 'pointer' };
-const modalConfirmDeleteButton: React.CSSProperties = { flex: 1, padding: '14px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '14px', fontWeight: '600', cursor: 'pointer' };
-
-const reportModalStyle: React.CSSProperties = { background: 'white', borderRadius: '24px', width: '100%', maxWidth: '1000px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 50px rgba(0,0,0,0.2)' };
-const modalHeaderStyle: React.CSSProperties = { padding: '24px 32px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: 'white', zIndex: 10 };
-const modalBodyStyle: React.CSSProperties = { padding: '32px' };
-const printBtnStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', background: '#10b981', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' };
-const closeBtnStyle: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' };
-const tableStyle: React.CSSProperties = { width: '100%', borderCollapse: 'collapse', marginTop: '20px' };
 
 export default ListaMotoristas;
