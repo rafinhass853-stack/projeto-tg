@@ -10,10 +10,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  ImageBackground, // Importado para o fundo
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from './firebase';   // Ajuste o caminho se necessário
+import { auth } from './firebase';
 
 const LoginScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState('');
@@ -27,7 +28,6 @@ const LoginScreen = ({ navigation }: any) => {
       return;
     }
 
-    // Validação simples de email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       Alert.alert('Erro', 'Por favor, digite um email válido.');
@@ -42,7 +42,6 @@ const LoginScreen = ({ navigation }: any) => {
 
       Alert.alert('Sucesso', `Bem-vindo!`);
 
-      // Navega para o Menu do Motorista passando os dados do usuário
       navigation.replace('MenuMotorista', {
         userId: user.uid,
         email: user.email,
@@ -77,136 +76,171 @@ const LoginScreen = ({ navigation }: any) => {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    <ImageBackground 
+     // O ../ significa: sair da pasta 'src' e procurar a pasta 'assets' na raiz
+source={require('../assets/tg-estrada.png')}
+      style={styles.backgroundImage}
+      resizeMode="cover"
     >
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.logoContainer}>
-          <Ionicons name="bus" size={90} color="#0A1F3D" />
-          <Text style={styles.title}>TG Logística</Text>
-          <Text style={styles.subtitle}>Aplicativo do Motorista</Text>
-        </View>
-
-        <View style={styles.formContainer}>
-          <Text style={styles.label}>Email</Text>
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder="Digite seu email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              value={email}
-              onChangeText={setEmail}
-            />
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView contentContainerStyle={styles.container}>
+          <View style={styles.logoContainer}>
+            {/* Ícone branco para destacar no fundo escuro */}
+            <Ionicons name="bus" size={80} color="#fff" />
+            <Text style={styles.title}>TG Logística</Text>
+            <Text style={styles.subtitle}>Aplicativo do Motorista</Text>
           </View>
 
-          <Text style={styles.label}>Senha</Text>
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder="Digite sua senha"
-              secureTextEntry={!showPassword}
-              value={password}
-              onChangeText={setPassword}
-            />
-            <TouchableOpacity
-              style={styles.eyeIcon}
-              onPress={() => setShowPassword(!showPassword)}
-            >
-              <Ionicons
-                name={showPassword ? 'eye-off' : 'eye'}
-                size={24}
-                color="#666"
+          <View style={styles.formContainer}>
+            <Text style={styles.label}>Email</Text>
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder="seuemail@tglogistica.com.br"
+                placeholderTextColor="#999"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={email}
+                onChangeText={setEmail}
               />
+            </View>
+
+            <Text style={styles.label}>Senha</Text>
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder="Digite sua senha"
+                placeholderTextColor="#999"
+                secureTextEntry={!showPassword}
+                value={password}
+                onChangeText={setPassword}
+              />
+              <TouchableOpacity
+                style={styles.eyeIcon}
+                onPress={() => setShowPassword(!showPassword)}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off' : 'eye'}
+                  size={24}
+                  color="#666"
+                />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.loginButton}
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.loginButtonText}>ENTRAR NO SISTEMA</Text>
+              )}
             </TouchableOpacity>
           </View>
-
-          <TouchableOpacity
-            style={styles.loginButton}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.loginButtonText}>ENTRAR</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          
+          <Text style={styles.footerText}>Sistema Seguro • Acesso Restrito</Text>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </ImageBackground>
   );
 };
 
 const styles = StyleSheet.create({
+  backgroundImage: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
   container: {
     flexGrow: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)', // Camada escura para dar leitura sobre a foto
     justifyContent: 'center',
-    padding: 20,
+    padding: 25,
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 50,
+    marginBottom: 40,
   },
   title: {
-    fontSize: 32,
+    fontSize: 34,
     fontWeight: 'bold',
-    color: '#0A1F3D',
-    marginTop: 12,
+    color: '#fff',
+    marginTop: 10,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: {width: -1, height: 1},
+    textShadowRadius: 10
   },
   subtitle: {
-    fontSize: 18,
-    color: '#666',
+    fontSize: 16,
+    color: '#ddd',
     marginTop: 4,
+    fontWeight: '500',
   },
   formContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)', // Fundo branco levemente transparente
+    borderRadius: 25,
     padding: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
   },
   label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0A1F3D',
     marginBottom: 8,
+    textTransform: 'uppercase',
   },
   inputContainer: {
     position: 'relative',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   input: {
-    backgroundColor: '#f9f9f9',
+    backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#e1e1e1',
     borderRadius: 12,
-    padding: 16,
-    fontSize: 17,
+    padding: 15,
+    fontSize: 16,
+    color: '#333',
   },
   eyeIcon: {
     position: 'absolute',
-    right: 16,
-    top: 16,
+    right: 15,
+    top: 15,
   },
   loginButton: {
-    backgroundColor: '#0A1F3D',
+    backgroundColor: '#2D5795', // Azul padrão da TG Logística
     paddingVertical: 18,
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 10,
+    shadowColor: '#2D5795',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 5,
   },
   loginButtonText: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 1,
   },
+  footerText: {
+    textAlign: 'center',
+    color: '#fff',
+    marginTop: 30,
+    fontSize: 12,
+    opacity: 0.8,
+  }
 });
 
 export default LoginScreen;

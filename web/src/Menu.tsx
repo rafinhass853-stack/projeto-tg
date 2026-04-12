@@ -31,24 +31,23 @@ const Menu = () => {
     setSelectedMotoristaId(null);
   };
 
-  // AJUSTE: Removidos os itens de "Cadastrar" conforme solicitado
   const menuItems = [
     {
       section: 'Motoristas',
       items: [
-        { id: 'motoristas-list', label: 'Motoristas Cadastrados', icon: '📋', color: '#3b82f6' }
+        { id: 'motoristas-list', label: 'Motoristas Cadastrados', icon: '📋', color: '#FFD700' }
       ]
     },
     {
       section: 'Carretas',
       items: [
-        { id: 'carretas-list', label: 'Carretas Cadastradas', icon: '📦', color: '#10b981' }
+        { id: 'carretas-list', label: 'Carretas Cadastradas', icon: '📦', color: '#FFD700' }
       ]
     },
     {
       section: 'Veículos',
       items: [
-        { id: 'veiculos-list', label: 'Veículos Cadastrados', icon: '🚙', color: '#f59e0b' }
+        { id: 'veiculos-list', label: 'Veículos Cadastrados', icon: '🚙', color: '#FFD700' }
       ]
     },
     {
@@ -58,7 +57,7 @@ const Menu = () => {
           id: 'lancar-carga', 
           label: 'Lançar Carga', 
           icon: '📦', 
-          color: '#8b5cf6' 
+          color: '#FFD700' 
         }
       ]
     }
@@ -86,12 +85,14 @@ const Menu = () => {
 
         <div style={logoStyle}>
           {!sidebarCollapsed ? (
-            <>
-              <h2 style={logoTitleStyle}>Logística TG</h2>
+            <div style={logoWrapperStyle}>
+              <img src="/tg-logo.png" alt="TG Logística" style={logoImageStyle} />
               <p style={logoSubtitleStyle}>Painel Gestor</p>
-            </>
+            </div>
           ) : (
-            <div style={logoIconStyle}>📦</div>
+            <div style={logoIconStyle}>
+               <img src="/tg-logo.png" alt="TG" style={{ width: '40px', height: 'auto' }} />
+            </div>
           )}
         </div>
 
@@ -104,8 +105,9 @@ const Menu = () => {
                   key={item.id}
                   style={{
                     ...(sidebarCollapsed ? navButtonCollapsedStyle : navButtonStyle),
-                    ...(activeTab === item.id ? { ...activeButtonStyle, backgroundColor: item.color } : {}),
-                    backgroundColor: hoveredItem === item.id && activeTab !== item.id ? 'rgba(255,255,255,0.1)' : (activeTab === item.id ? item.color : 'transparent'),
+                    ...(activeTab === item.id ? activeButtonStyle : {}),
+                    backgroundColor: hoveredItem === item.id && activeTab !== item.id ? 'rgba(255,215,0,0.1)' : (activeTab === item.id ? '#FFD700' : 'transparent'),
+                    color: activeTab === item.id ? '#000' : '#CCC',
                   }}
                   onMouseEnter={() => setHoveredItem(item.id)}
                   onMouseLeave={() => setHoveredItem(null)}
@@ -166,25 +168,25 @@ const Menu = () => {
   );
 };
 
-// ==================== ESTILOS ====================
+// ==================== ESTILOS ATUALIZADOS - TEMA PRETO/DOURADO ====================
 const dashboardStyle: React.CSSProperties = {
   display: 'flex',
   minHeight: '100vh',
-  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  background: '#000',
   fontFamily: "'Segoe UI', 'Inter', system-ui, sans-serif"
 };
 
 const sidebarStyle: React.CSSProperties = {
-  backgroundColor: 'rgba(30, 41, 59, 0.95)',
-  backdropFilter: 'blur(10px)',
+  backgroundColor: '#0A0A0A',
   color: 'white',
   padding: '20px',
   display: 'flex',
   flexDirection: 'column',
-  boxShadow: '2px 0 20px rgba(0,0,0,0.2)',
+  boxShadow: '2px 0 20px rgba(0,0,0,0.5)',
   transition: 'width 0.3s ease',
   position: 'relative',
-  zIndex: 10
+  zIndex: 10,
+  borderRight: '1px solid #1A1A1A'
 };
 
 const collapseButtonStyle: React.CSSProperties = {
@@ -194,14 +196,15 @@ const collapseButtonStyle: React.CSSProperties = {
   width: '24px',
   height: '24px',
   borderRadius: '50%',
-  background: '#3b82f6',
+  background: '#FFD700',
   border: 'none',
-  color: 'white',
+  color: '#000',
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   fontSize: '12px',
+  fontWeight: '900',
   transition: 'all 0.3s ease',
   zIndex: 20
 };
@@ -209,27 +212,34 @@ const collapseButtonStyle: React.CSSProperties = {
 const logoStyle: React.CSSProperties = {
   marginBottom: '40px',
   textAlign: 'center',
-  marginTop: '20px'
+  marginTop: '20px',
+  display: 'flex',
+  justifyContent: 'center'
 };
 
-const logoTitleStyle: React.CSSProperties = {
-  fontSize: '24px',
-  fontWeight: '700',
-  marginBottom: '4px',
-  background: 'linear-gradient(135deg, #fff 0%, #cbd5e1 100%)',
-  WebkitBackgroundClip: 'text',
-  WebkitTextFillColor: 'transparent'
+const logoWrapperStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: '8px'
+};
+
+const logoImageStyle: React.CSSProperties = {
+  width: '160px',
+  height: 'auto',
 };
 
 const logoSubtitleStyle: React.CSSProperties = {
   fontSize: '12px',
-  color: '#94a3b8',
-  marginTop: '4px'
+  color: '#FFD700',
+  marginTop: '2px',
+  fontWeight: '600'
 };
 
 const logoIconStyle: React.CSSProperties = {
-  fontSize: '32px',
-  textAlign: 'center'
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
 };
 
 const navStyle: React.CSSProperties = {
@@ -238,9 +248,9 @@ const navStyle: React.CSSProperties = {
 };
 
 const sectionTitleStyle: React.CSSProperties = {
-  color: '#94a3b8',
+  color: '#666',
   fontSize: '11px',
-  fontWeight: '600',
+  fontWeight: '700',
   margin: '20px 0 8px 12px',
   textTransform: 'uppercase',
   letterSpacing: '1px'
@@ -254,13 +264,13 @@ const navButtonStyle: React.CSSProperties = {
   padding: '12px 16px',
   margin: '4px 0',
   backgroundColor: 'transparent',
-  color: '#cbd5e1',
+  color: '#CCC',
   border: 'none',
   borderRadius: '12px',
   cursor: 'pointer',
   fontSize: '14px',
-  fontWeight: '500',
-  transition: 'all 0.3s ease',
+  fontWeight: '600',
+  transition: 'all 0.2s ease',
   textAlign: 'left'
 };
 
@@ -272,8 +282,9 @@ const navButtonCollapsedStyle: React.CSSProperties = {
 };
 
 const activeButtonStyle: React.CSSProperties = {
-  color: 'white',
-  boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+  color: '#000',
+  boxShadow: '0 4px 12px rgba(255,215,0,0.3)',
+  fontWeight: '700'
 };
 
 const iconStyle: React.CSSProperties = {
@@ -286,13 +297,13 @@ const logoutButtonStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: '12px',
   padding: '12px 16px',
-  backgroundColor: '#ef4444',
+  backgroundColor: '#EF4444',
   color: 'white',
   border: 'none',
   borderRadius: '12px',
   cursor: 'pointer',
   fontSize: '14px',
-  fontWeight: '600',
+  fontWeight: '700',
   marginTop: '20px',
   transition: 'all 0.3s ease'
 };
@@ -305,12 +316,12 @@ const contentStyle: React.CSSProperties = {
 };
 
 const headerStyle: React.CSSProperties = {
-  background: 'white',
+  background: '#0A0A0A',
   padding: '24px 32px',
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+  borderBottom: '1px solid #1A1A1A',
   flexWrap: 'wrap',
   gap: '16px'
 };
@@ -321,14 +332,14 @@ const headerLeftStyle: React.CSSProperties = {
 
 const pageTitleStyle: React.CSSProperties = {
   fontSize: '28px',
-  fontWeight: '700',
-  color: '#1e2937',
+  fontWeight: '900',
+  color: '#FFF',
   marginBottom: '8px'
 };
 
 const pageSubtitleStyle: React.CSSProperties = {
   fontSize: '14px',
-  color: '#64748b'
+  color: '#888'
 };
 
 const userInfoStyle: React.CSSProperties = {
@@ -336,15 +347,16 @@ const userInfoStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: '12px',
   padding: '8px 16px',
-  background: '#f8fafc',
-  borderRadius: '16px'
+  background: '#1A1A1A',
+  borderRadius: '16px',
+  border: '1px solid #333'
 };
 
 const avatarStyle: React.CSSProperties = {
   width: '40px',
   height: '40px',
   borderRadius: '50%',
-  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  background: '#FFD700',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -359,18 +371,18 @@ const userDetailsStyle: React.CSSProperties = {
 const userNameStyle: React.CSSProperties = {
   fontSize: '14px',
   fontWeight: '600',
-  color: '#1e2937'
+  color: '#FFF'
 };
 
 const userRoleStyle: React.CSSProperties = {
   fontSize: '12px',
-  color: '#64748b'
+  color: '#888'
 };
 
 const contentAreaStyle: React.CSSProperties = {
   flex: 1,
   overflowY: 'auto',
-  background: '#f8fafc'
+  background: '#000'
 };
 
 const contentWrapperStyle: React.CSSProperties = {

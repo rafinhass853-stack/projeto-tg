@@ -25,6 +25,15 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O aplicativo precisa de acesso às suas fotos para anexar comprovantes.",
+          "cameraPermission": "O aplicativo precisa de acesso à câmera para registrar o check-in."
+        }
+      ]
+    ]
   }
 }

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { 
-  getAuth, 
-  createUserWithEmailAndPassword 
+import {
+  getAuth,
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
 
 import { db, storage } from './firebase';
@@ -21,7 +21,7 @@ interface Motorista {
   email?: string;
   senha?: string;
   fotoPerfilUrl?: string;
-  uid?: string;           // ← Novo campo para guardar o UID do Auth
+  uid?: string;
   createdAt?: string;
 }
 
@@ -41,7 +41,7 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  const auth = getAuth();   // Instância do Authentication
+  const auth = getAuth();
 
   useEffect(() => {
     const fetchMotorista = async () => {
@@ -49,7 +49,7 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
         const docRef = doc(db, 'motoristas', motoristaId);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          const data = { id: docSnap.id, ...docSnap.data() } as Motorista;
+          const data = { id: docSnap.id,...docSnap.data() } as Motorista;
           setMotorista(data);
           setEditForm(data);
         }
@@ -71,13 +71,12 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
   }, [novaFoto]);
 
   const handleSaveEdit = async () => {
-    if (!editForm || !motorista) return;
+    if (!editForm ||!motorista) return;
     setUploading(true);
 
     try {
       let fotoUrlFinal = editForm.fotoPerfilUrl;
 
-      // Upload da foto se houver nova
       if (novaFoto) {
         const storageRef = ref(storage, `fotos-motoristas/${motorista.id}-${Date.now()}`);
         await uploadBytes(storageRef, novaFoto);
@@ -85,27 +84,24 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
       }
 
       const motoristaRef = doc(db, 'motoristas', motorista.id);
-      const updatedData = { 
-        ...editForm, 
-        fotoPerfilUrl: fotoUrlFinal 
+      const updatedData = {
+      ...editForm,
+        fotoPerfilUrl: fotoUrlFinal
       };
 
-      // ==================== CRIAÇÃO DO LOGIN NO AUTH ====================
       if (editForm.email && editForm.senha && editForm.senha.length >= 6) {
         try {
-          // Cria o usuário no Firebase Authentication
           const userCredential = await createUserWithEmailAndPassword(
-            auth, 
-            editForm.email.trim(), 
+            auth,
+            editForm.email.trim(),
             editForm.senha
           );
 
           const newUid = userCredential.user.uid;
 
-          // Salva no Firestore com o UID real
           await setDoc(motoristaRef, {
-            ...updatedData,
-            uid: newUid,           // importante para o app mobile
+          ...updatedData,
+            uid: newUid,
             email: editForm.email.trim(),
           }, { merge: true });
 
@@ -118,18 +114,15 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
           } else {
             console.error('Erro no Auth:', authError);
             alert(`❌ Erro ao criar login: ${authError.message}`);
-            // Mesmo com erro no Auth, salva os dados pessoais
             await updateDoc(motoristaRef, updatedData);
           }
         }
       } else {
-        // Se não preencheu email/senha, só atualiza dados normais
         await updateDoc(motoristaRef, updatedData);
         alert('✅ Dados pessoais atualizados com sucesso!');
       }
 
-      // Atualiza o estado local
-      setMotorista({ ...updatedData, id: motorista.id });
+      setMotorista({...updatedData, id: motorista.id });
       setShowEditModal(false);
       setNovaFoto(null);
       setPreviewUrl(null);
@@ -154,12 +147,12 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
 
       <div style={headerStyle}>
         <div style={fotoWrapper}>
-          {motorista.fotoPerfilUrl ? (
+          {motorista.fotoPerfilUrl? (
             <img src={motorista.fotoPerfilUrl} alt={motorista.nome} style={fotoStyle} />
           ) : (
             <div style={initialsStyle}>{motorista.nome.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}</div>
           )}
-          <div style={moppBadge}>{motorista.temMopp === 'Sim' ? '✅ MOPP' : '❌ Sem MOPP'}</div>
+          <div style={moppBadge}>{motorista.temMopp === 'Sim'? '✅ MOPP' : '❌ Sem MOPP'}</div>
         </div>
 
         <div style={infoSection}>
@@ -184,16 +177,16 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
           <div
             key={item.id}
             style={{
-              ...menuCardStyle,
-              transform: hoveredCard === item.id ? 'translateY(-6px)' : 'none',
-              boxShadow: hoveredCard === item.id ? '0 20px 40px rgba(0,0,0,0.12)' : '0 10px 30px rgba(0,0,0,0.08)'
+            ...menuCardStyle,
+              transform: hoveredCard === item.id? 'translateY(-6px)' : 'none',
+              boxShadow: hoveredCard === item.id? '0 20px 40px rgba(255,215,0,0.2)' : '0 10px 30px rgba(0,0,0,0.3)'
             }}
             onMouseEnter={() => setHoveredCard(item.id)}
             onMouseLeave={() => setHoveredCard(null)}
             onClick={() => setActiveSubTab(item.id)}
           >
-            <div style={{ ...iconCircle, backgroundColor: item.bgColor }}>
-              <span style={{ color: item.color, fontSize: '42px' }}>{item.icon}</span>
+            <div style={{...iconCircle, backgroundColor: '#1A1A' }}>
+              <span style={{ color: '#FFD700', fontSize: '42px' }}>{item.icon}</span>
             </div>
             <h3 style={cardTitle}>{item.title}</h3>
             <p style={cardDesc}>{item.desc}</p>
@@ -201,15 +194,15 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
         ))}
       </div>
 
-      {/* MODAL DE EDIÇÃO - com seção de login */}
+      {/* MODAL DE EDIÇÃO */}
       {showEditModal && editForm && (
         <div style={modalOverlay} onClick={() => setShowEditModal(false)}>
           <div style={modalContent} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0 }}>Editar Motorista</h2>
-              <button onClick={() => setShowEditModal(false)} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer' }}>×</button>
+              <h2 style={{ margin: 0, color: '#FFF' }}>Editar Motorista</h2>
+              <button onClick={() => setShowEditModal(false)} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#888' }}>×</button>
             </div>
-            
+
             <div style={formSectionTitle}>Dados Pessoais</div>
             <div style={formGrid}>
               <div><label style={labelStyle}>Nome Completo *</label>
@@ -239,36 +232,36 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
             <div style={formGrid}>
               <div>
                 <label style={labelStyle}>E-mail de Login *</label>
-                <input 
-                  type="email" 
+                <input
+                  type="email"
                   placeholder="exemplo@tg.com"
-                  value={editForm.email || ''} 
-                  onChange={e => setEditForm({...editForm, email: e.target.value})} 
-                  style={inputField} 
+                  value={editForm.email || ''}
+                  onChange={e => setEditForm({...editForm, email: e.target.value})}
+                  style={inputField}
                 />
               </div>
               <div>
                 <label style={labelStyle}>Senha de Acesso *</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder="Mínimo 6 caracteres"
-                  value={editForm.senha || ''} 
-                  onChange={e => setEditForm({...editForm, senha: e.target.value})} 
-                  style={inputField} 
+                  value={editForm.senha || ''}
+                  onChange={e => setEditForm({...editForm, senha: e.target.value})}
+                  style={inputField}
                 />
               </div>
             </div>
 
             <div style={{ marginTop: '30px' }}>
               <label style={labelStyle}>Foto de Perfil</label>
-              <input type="file" accept="image/*" onChange={e => e.target.files && setNovaFoto(e.target.files[0])} style={{ marginTop: '10px', display: 'block' }} />
-              {previewUrl && <img src={previewUrl} alt="Preview" style={{ width: '100px', height: '100px', borderRadius: '50%', marginTop: '15px', objectFit: 'cover', border: '2px solid #3b82f6' }} />}
+              <input type="file" accept="image/*" onChange={e => e.target.files && setNovaFoto(e.target.files[0])} style={{ marginTop: '10px', display: 'block', color: '#AAA' }} />
+              {previewUrl && <img src={previewUrl} alt="Preview" style={{ width: '100px', height: '100px', borderRadius: '50%', marginTop: '15px', objectFit: 'cover', border: '2px solid #FFD700' }} />}
             </div>
 
             <div style={modalActions}>
               <button onClick={() => setShowEditModal(false)} style={cancelBtn}>Cancelar</button>
               <button onClick={handleSaveEdit} style={saveBtn} disabled={uploading}>
-                {uploading ? 'Salvando...' : 'Salvar Alterações'}
+                {uploading? 'Salvando...' : 'Salvar Alterações'}
               </button>
             </div>
           </div>
@@ -278,45 +271,45 @@ const MenuMotorista: React.FC<MenuMotoristaProps> = ({ motoristaId, onVoltar }) 
   );
 };
 
-// Menu Items (mantido igual)
+// Menu Items
 const menuItems = [
-  { id: 'programar', title: "Programar Motorista", icon: "📅", desc: "Agendar viagens e rotas", color: "#3b82f6", bgColor: "#eff6ff" },
-  { id: 'historico', title: "Histórico de Viagens", icon: "🛣️", desc: "Todas as viagens realizadas", color: "#10b981", bgColor: "#ecfdf5" },
-  { id: 'abastecimentos', title: "Abastecimentos", icon: "⛽", desc: "Registro de combustível", color: "#f59e0b", bgColor: "#fffbeb" },
-  { id: 'chat', title: "Chat com Motorista", icon: "💬", desc: "Comunicar diretamente", color: "#8b5cf6", bgColor: "#f5f3ff" },
-  { id: 'escala', title: "Escala / Folga", icon: "🗓️", desc: "Gerenciar dias de descanso", color: "#ec4899", bgColor: "#fdf2f8" },
-  { id: 'hodometro', title: "Hodômetro", icon: "🔢", desc: "Controle de quilometragem", color: "#06b6d4", bgColor: "#ecfeff" },
+  { id: 'programar', title: "Programar Motorista", icon: "📅", desc: "Agendar viagens e rotas", color: "#FFD700", bgColor: "#1A1A1A" },
+  { id: 'historico', title: "Histórico de Viagens", icon: "🛣️", desc: "Todas as viagens realizadas", color: "#FFD700", bgColor: "#1A1A1A" },
+  { id: 'abastecimentos', title: "Abastecimentos", icon: "⛽", desc: "Registro de combustível", color: "#FFD700", bgColor: "#1A1A1A" },
+  { id: 'chat', title: "Chat com Motorista", icon: "💬", desc: "Comunicar diretamente", color: "#FFD700", bgColor: "#1A1A1A" },
+  { id: 'escala', title: "Escala / Folga", icon: "🗓️", desc: "Gerenciar dias de descanso", color: "#FFD700", bgColor: "#1A1A1A" },
+  { id: 'hodometro', title: "Hodômetro", icon: "🔢", desc: "Controle de quilometragem", color: "#FFD700", bgColor: "#1A1A1A" },
 ];
 
-// Estilos (mantidos iguais ao seu código original)
-const containerStyle: React.CSSProperties = { minHeight: '100vh', background: 'linear-gradient(135deg, #f8fafc, #e0e7ff)', padding: '30px 20px' };
-const voltarBtn: React.CSSProperties = { padding: '10px 20px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '12px', cursor: 'pointer', marginBottom: '20px', fontWeight: 600 };
-const headerStyle: React.CSSProperties = { display: 'flex', gap: '40px', background: 'white', padding: '40px', borderRadius: '24px', boxShadow: '0 15px 40px rgba(0,0,0,0.1)', maxWidth: '1200px', margin: '0 auto 40px' };
+// ==================== ESTILOS TEMA PRETO/DOURADO ====================
+const containerStyle: React.CSSProperties = { minHeight: '100vh', background: '#000', padding: '30px 20px' };
+const voltarBtn: React.CSSProperties = { padding: '10px 20px', background: '#1A1A1A', border: '1px solid #333', borderRadius: '12px', cursor: 'pointer', marginBottom: '20px', fontWeight: 600, color: '#FFD700' };
+const headerStyle: React.CSSProperties = { display: 'flex', gap: '40px', background: '#0A0A0A', padding: '40px', borderRadius: '24px', boxShadow: '0 15px 40px rgba(0,0,0.5)', maxWidth: '1200px', margin: '0 auto 40px', border: '1px solid #1A1A1A' };
 const fotoWrapper: React.CSSProperties = { position: 'relative', width: '160px', height: '160px' };
-const fotoStyle: React.CSSProperties = { width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', border: '5px solid white' };
-const initialsStyle: React.CSSProperties = { ...fotoStyle, background: 'linear-gradient(135deg, #3b82f6, #1e3a8a)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '48px', color: 'white', fontWeight: 'bold' };
-const moppBadge: React.CSSProperties = { position: 'absolute', bottom: '0', right: '0', background: 'white', padding: '6px 14px', borderRadius: '20px', fontSize: '13px', boxShadow: '0 4px 10px rgba(0,0,0,0.15)', fontWeight: 700 };
+const fotoStyle: React.CSSProperties = { width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', border: '5px solid #FFD700' };
+const initialsStyle: React.CSSProperties = {...fotoStyle, background: '#FFD700', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '48px', color: '#000', fontWeight: 'bold' };
+const moppBadge: React.CSSProperties = { position: 'absolute', bottom: '0', right: '0', background: '#FFD700', color: '#000', padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: 700 };
 const infoSection: React.CSSProperties = { flex: 1 };
-const nomeTitle: React.CSSProperties = { fontSize: '34px', fontWeight: '700', margin: '0 0 8px 0', color: '#1e293b' };
-const cpfText: React.CSSProperties = { fontSize: '16px', color: '#64748b', margin: '0 0 20px 0' };
-const detailsGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', fontSize: '15px', color: '#475569' };
-const editMainButton: React.CSSProperties = { padding: '10px 20px', background: '#f1f5f9', border: 'none', borderRadius: '12px', cursor: 'pointer', fontSize: '14px', fontWeight: 700, color: '#4f46e5', transition: 'all 0.2s' };
-const menuTitle: React.CSSProperties = { textAlign: 'center', fontSize: '28px', fontWeight: 800, color: '#1e293b', marginBottom: '30px' };
+const nomeTitle: React.CSSProperties = { fontSize: '34px', fontWeight: '700', margin: '0 0 8px 0', color: '#FFF' };
+const cpfText: React.CSSProperties = { fontSize: '16px', color: '#888', margin: '0 0 20px 0' };
+const detailsGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', fontSize: '15px', color: '#AAA' };
+const editMainButton: React.CSSProperties = { padding: '10px 20px', background: '#FFD700', border: 'none', borderRadius: '12px', cursor: 'pointer', fontSize: '14px', fontWeight: 700, color: '#000', transition: 'all 0.2s' };
+const menuTitle: React.CSSProperties = { textAlign: 'center', fontSize: '28px', fontWeight: 800, color: '#FFF', marginBottom: '30px' };
 const cardsGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '25px', maxWidth: '1200px', margin: '0 auto' };
-const menuCardStyle: React.CSSProperties = { background: 'white', padding: '30px', borderRadius: '24px', cursor: 'pointer', transition: 'all 0.3s ease', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' };
-const iconCircle: React.CSSProperties = { width: '90px', height: '90px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px' };
-const cardTitle: React.CSSProperties = { fontSize: '20px', fontWeight: 700, margin: '0 0 10px 0', color: '#1e293b' };
-const cardDesc: React.CSSProperties = { fontSize: '14px', color: '#64748b', margin: 0, lineHeight: '1.5' };
-const loadingStyle: React.CSSProperties = { textAlign: 'center', padding: '100px', fontSize: '18px', color: '#64748b' };
-const errorStyle: React.CSSProperties = { textAlign: 'center', padding: '100px', fontSize: '18px', color: '#ef4444' };
-const modalOverlay: React.CSSProperties = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 };
-const modalContent: React.CSSProperties = { background: 'white', padding: '40px', borderRadius: '28px', width: '90%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' };
-const labelStyle: React.CSSProperties = { fontSize: '13px', fontWeight: 700, color: '#475569', marginBottom: '5px', display: 'block' };
-const inputField: React.CSSProperties = { width: '100%', padding: '12px 16px', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '5px', fontSize: '15px', outline: 'none' };
-const formSectionTitle: React.CSSProperties = { fontSize: '16px', fontWeight: 800, color: '#1e293b', margin: '25px 0 15px 0', paddingBottom: '8px', borderBottom: '2px solid #f1f5f9' };
+const menuCardStyle: React.CSSProperties = { background: '#0A0A0A', padding: '30px', borderRadius: '24px', cursor: 'pointer', transition: 'all 0.3s ease', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', border: '1px solid #1A1A1A' };
+const iconCircle: React.CSSProperties = { width: '90px', height: '90px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px', backgroundColor: '#1A1A1A' };
+const cardTitle: React.CSSProperties = { fontSize: '20px', fontWeight: 700, margin: '0 0 10px 0', color: '#FFF' };
+const cardDesc: React.CSSProperties = { fontSize: '14px', color: '#666', margin: 0, lineHeight: '1.5' };
+const loadingStyle: React.CSSProperties = { textAlign: 'center', padding: '100px', fontSize: '18px', color: '#888' };
+const errorStyle: React.CSSProperties = { textAlign: 'center', padding: '100px', fontSize: '18px', color: '#EF4444' };
+const modalOverlay: React.CSSProperties = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 };
+const modalContent: React.CSSProperties = { background: '#0A0A0A', padding: '40px', borderRadius: '28px', width: '90%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto', border: '1px solid #FFD700' };
+const labelStyle: React.CSSProperties = { fontSize: '13px', fontWeight: 700, color: '#AAA', marginBottom: '5px', display: 'block' };
+const inputField: React.CSSProperties = { width: '100%', padding: '12px 16px', borderRadius: '12px', border: '1px solid #333', marginTop: '5px', fontSize: '15px', outline: 'none', backgroundColor: '#1A1A1A', color: '#FFF' };
+const formSectionTitle: React.CSSProperties = { fontSize: '16px', fontWeight: 800, color: '#FFF', margin: '25px 0 15px 0', paddingBottom: '8px', borderBottom: '2px solid #FFD700' };
 const formGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' };
 const modalActions: React.CSSProperties = { display: 'flex', justifyContent: 'flex-end', gap: '15px', marginTop: '40px' };
-const cancelBtn: React.CSSProperties = { padding: '12px 24px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontWeight: 600, color: '#64748b' };
-const saveBtn: React.CSSProperties = { padding: '12px 32px', borderRadius: '12px', border: 'none', background: '#3b82f6', color: 'white', cursor: 'pointer', fontWeight: 700, boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)' };
+const cancelBtn: React.CSSProperties = { padding: '12px 24px', borderRadius: '12px', border: '1px solid #333', background: '#1A1A1A', cursor: 'pointer', fontWeight: 600, color: '#888' };
+const saveBtn: React.CSSProperties = { padding: '12px 32px', borderRadius: '12px', border: 'none', background: '#FFD700', color: '#000', cursor: 'pointer', fontWeight: 700 };
 
 export default MenuMotorista;
