@@ -11,6 +11,8 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -34,15 +36,31 @@ const MenuMotorista = ({ navigation, route }: any) => {
     temMopp: false,
   });
 
+  const [motoristaDocId, setMotoristaDocId] = useState<string | null>(null);
   const [viagemAtual, setViagemAtual] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [loadingViagem, setLoadingViagem] = useState(false);
 
+  // Modal Check-in Coleta
   const [modalVisible, setModalVisible] = useState(false);
   const [dataHoraChegada, setDataHoraChegada] = useState('');
   const [fotoChegada, setFotoChegada] = useState<string | null>(null);
   const [tipoFoto, setTipoFoto] = useState<'selfie' | 'documento'>('selfie');
   const [subindoFoto, setSubindoFoto] = useState(false);
+
+  // Modal Check-in Entrega - SEM FOTO
+  const [modalEntregaVisible, setModalEntregaVisible] = useState(false);
+  const [dataHoraEntrega, setDataHoraEntrega] = useState('');
+
+  // Modal Devolução - FOTOS OPCIONAIS
+  const [modalDevolucaoVisible, setModalDevolucaoVisible] = useState(false);
+  const [fotosDevolucao, setFotosDevolucao] = useState<string[]>([]);
+  const [subindoDevolucao, setSubindoDevolucao] = useState(false);
+
+  // Modal Canhotos - FOTOS OPCIONAIS MÚLTIPLAS
+  const [modalCanhotosVisible, setModalCanhotosVisible] = useState(false);
+  const [fotosCanhotos, setFotosCanhotos] = useState<string[]>([]);
+  const [subindoCanhotos, setSubindoCanhotos] = useState(false);
 
   useEffect(() => {
     fetchMotoristaData();
@@ -70,7 +88,12 @@ const MenuMotorista = ({ navigation, route }: any) => {
       const snapshot = await getDocs(q);
 
       if (!snapshot.empty) {
-        const data = snapshot.docs[0].data();
+        const doc = snapshot.docs[0];
+        const data = doc.data();
+        
+        // SALVAR O ID CORRETO DO DOCUMENTO DO MOTORISTA
+        setMotoristaDocId(doc.id);
+        
         setMotorista({
           nome: data.nome || 'Motorista',
           cpf: data.cpf || '',
@@ -81,6 +104,9 @@ const MenuMotorista = ({ navigation, route }: any) => {
           foto: data.fotoPerfilUrl || `https://i.pravatar.cc/150?u=${userId}`,
           temMopp: data.temMopp === 'Sim',
         });
+      } else {
+        console.error('Documento do motorista não encontrado para uid:', userId);
+        Alert.alert('Erro', 'Dados do motorista não encontrados. Contate o suporte.');
       }
     } catch (err) {
       console.error(err);
@@ -96,15 +122,15 @@ const MenuMotorista = ({ navigation, route }: any) => {
     const q = query(
       collectionGroup(db, 'cargas'),
       where('cpf', '==', cpf),
-      where('status', 'in', ['programada', 'aguardando_carregamento', 'seguindo_para_entrega']),
+      where('status', 'in', ['programada', 'aguardando_carregamento', 'seguindo_para_entrega', 'chegou_entrega']),
       orderBy('criadoEm', 'desc'),
       limit(1)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
-        const doc = snapshot.docs[0];
-        setViagemAtual({ id: doc.id, docId: doc.ref.path,...doc.data() });
+        const docSnap = snapshot.docs[0];
+        setViagemAtual({ id: docSnap.id, docId: docSnap.ref.path, ...docSnap.data() });
       } else {
         setViagemAtual(null);
       }
@@ -118,6 +144,41 @@ const MenuMotorista = ({ navigation, route }: any) => {
     return unsubscribe;
   };
 
+  const verificarPontualidade = (dataHoraChegada: string, dataHoraLimite: string) => {
+    if (!dataHoraLimite) return 'Sem horário definido';
+    
+    try {
+      const [dataChegada, horaChegada] = dataHoraChegada.split(' ');
+      const [diaChegada, mesChegada, anoChegada] = dataChegada.split('/');
+      const [horaChegadaStr, minutoChegadaStr] = horaChegada.split(':');
+      
+      const dataChegadaObj = new Date(
+        parseInt(anoChegada),
+        parseInt(mesChegada) - 1,
+        parseInt(diaChegada),
+        parseInt(horaChegadaStr),
+        parseInt(minutoChegadaStr)
+      );
+      
+      const [dataLimite, horaLimite] = dataHoraLimite.split(' ');
+      const [diaLimite, mesLimite, anoLimite] = dataLimite.split('/');
+      const [horaLimiteStr, minutoLimiteStr] = horaLimite.split(':');
+      
+      const dataLimiteObj = new Date(
+        parseInt(anoLimite),
+        parseInt(mesLimite) - 1,
+        parseInt(diaLimite),
+        parseInt(horaLimiteStr),
+        parseInt(minutoLimiteStr)
+      );
+      
+      return dataChegadaObj <= dataLimiteObj ? 'On Time' : 'No Show';
+    } catch (error) {
+      console.error('Erro ao verificar pontualidade:', error);
+      return 'Erro na verificação';
+    }
+  };
+
   const registrarChegadaColeta = async () => {
     const agora = new Date();
     const dataFormatada = `${String(agora.getDate()).padStart(2, '0')}/${String(agora.getMonth() + 1).padStart(2, '0')}/${agora.getFullYear()} ${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`;
@@ -127,9 +188,65 @@ const MenuMotorista = ({ navigation, route }: any) => {
     setModalVisible(true);
   };
 
-  const tirarFoto = async () => {
+  const registrarChegadaEntrega = async () => {
+    const agora = new Date();
+    const dataFormatada = `${String(agora.getDate()).padStart(2, '0')}/${String(agora.getMonth() + 1).padStart(2, '0')}/${agora.getFullYear()} ${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`;
+    setDataHoraEntrega(dataFormatada);
+    setModalEntregaVisible(true);
+  };
+
+  const iniciarViagem = async () => {
+    if (!viagemAtual || !motoristaDocId) {
+      Alert.alert('Erro', 'Dados da viagem ou motorista não carregados.');
+      return;
+    }
+
+    Alert.alert(
+      'Iniciar Viagem',
+      'Confirme que o carregamento foi concluído e você está pronto para seguir para a entrega.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Confirmar',
+          onPress: async () => {
+            try {
+              const docRef = doc(db, viagemAtual.docId);
+              const agora = new Date();
+              const dataFormatada = `${String(agora.getDate()).padStart(2, '0')}/${String(agora.getMonth() + 1).padStart(2, '0')}/${agora.getFullYear()} ${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`;
+
+              await updateDoc(docRef, {
+                status: 'seguindo_para_entrega',
+                inicioViagem: { dataHora: dataFormatada, timestamp: agora },
+                historicoStatus: {
+                  ...viagemAtual.historicoStatus,
+                  seguindoParaEntrega: { dataHora: dataFormatada, timestamp: agora },
+                },
+              });
+
+              const historicoMotoristaRef = collection(db, `motoristas/${motoristaDocId}/historicoCheckins`);
+              await addDoc(historicoMotoristaRef, {
+                viagemId: viagemAtual.id,
+                tipo: 'inicio_viagem',
+                dataHora: dataFormatada,
+                timestamp: agora,
+                coletaCidade: viagemAtual.coletaCidade,
+                entregaCidade: viagemAtual.entregaCidade,
+              });
+
+              Alert.alert('Sucesso!', 'Viagem iniciada com sucesso.');
+            } catch (error) {
+              console.error(error);
+              Alert.alert('Erro', 'Não foi possível iniciar a viagem.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const tirarFoto = async (setFotoCallback: (uri: string) => void) => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status!== 'granted') {
+    if (status !== 'granted') {
       Alert.alert('Permissão necessária', 'Precisamos de acesso à câmera.');
       return;
     }
@@ -138,13 +255,13 @@ const MenuMotorista = ({ navigation, route }: any) => {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0].uri) {
-      setFotoChegada(result.assets[0].uri);
+      setFotoCallback(result.assets[0].uri);
     }
   };
 
-  const escolherFotoGaleria = async () => {
+  const escolherFotoGaleria = async (setFotoCallback: (uri: string) => void) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status!== 'granted') {
+    if (status !== 'granted') {
       Alert.alert('Permissão necessária', 'Precisamos de acesso à galeria.');
       return;
     }
@@ -154,30 +271,78 @@ const MenuMotorista = ({ navigation, route }: any) => {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0].uri) {
-      setFotoChegada(result.assets[0].uri);
+      setFotoCallback(result.assets[0].uri);
     }
   };
 
-  const uploadFoto = async (uri: string, viagemId: string) => {
+  const adicionarFotoArray = async (array: string[], setArray: (arr: string[]) => void) => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissão necessária', 'Precisamos de acesso à câmera.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0].uri) {
+      setArray([...array, result.assets[0].uri]);
+    }
+  };
+
+  const adicionarFotoGaleriaArray = async (array: string[], setArray: (arr: string[]) => void) => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissão necessária', 'Precisamos de acesso à galeria.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0].uri) {
+      setArray([...array, result.assets[0].uri]);
+    }
+  };
+
+  const removerFotoArray = (index: number, array: string[], setArray: (arr: string[]) => void) => {
+    const novasFotos = array.filter((_, i) => i !== index);
+    setArray(novasFotos);
+  };
+
+  const uploadFoto = async (uri: string, viagemId: string, tipo: string) => {
+    if (!motoristaDocId) throw new Error('Motorista ID não encontrado');
     const storage = getStorage();
     const response = await fetch(uri);
     const blob = await response.blob();
-    const fileName = `checkin_coleta_${viagemId}_${Date.now()}.jpg`;
-    const storageRef = ref(storage, `motoristas/${motorista.cpf}/viagens/${viagemId}/${fileName}`);
+    const fileName = `${tipo}_${viagemId}_${Date.now()}.jpg`;
+    const storageRef = ref(storage, `motoristas/${motoristaDocId}/viagens/${viagemId}/${fileName}`);
     await uploadBytes(storageRef, blob);
     return await getDownloadURL(storageRef);
   };
 
+  const uploadMultiplasFotos = async (uris: string[], viagemId: string, tipo: string) => {
+    const urls = [];
+    for (const uri of uris) {
+      const url = await uploadFoto(uri, viagemId, tipo);
+      urls.push(url);
+    }
+    return urls;
+  };
+
   const confirmarChegada = async () => {
-    if (!viagemAtual ||!fotoChegada) {
+    if (!viagemAtual || !fotoChegada || !motoristaDocId) {
       Alert.alert('Atenção', 'Por favor, tire ou selecione uma foto para registrar a chegada.');
       return;
     }
     setSubindoFoto(true);
     try {
-      const fotoUrl = await uploadFoto(fotoChegada, viagemAtual.id);
+      const fotoUrl = await uploadFoto(fotoChegada, viagemAtual.id, 'coleta');
       const docRef = doc(db, viagemAtual.docId);
       const agora = new Date();
+
+      const pontualidade = verificarPontualidade(dataHoraChegada, viagemAtual.coletaHora);
 
       const checkinData = {
         chegadaColeta: {
@@ -185,19 +350,25 @@ const MenuMotorista = ({ navigation, route }: any) => {
           timestamp: agora,
           fotoUrl,
           tipoFoto,
-          cidade: motorista.cidade || viagemAtual.coletaCidade
+          cidade: motorista.cidade || viagemAtual.coletaCidade,
+          pontualidade: pontualidade,
         },
         status: 'aguardando_carregamento',
         historicoStatus: {
-    ...viagemAtual.historicoStatus,
-          chegadaColeta: { dataHora: dataHoraChegada, timestamp: agora, fotoUrl },
+          ...viagemAtual.historicoStatus,
+          chegadaColeta: { 
+            dataHora: dataHoraChegada, 
+            timestamp: agora, 
+            fotoUrl,
+            pontualidade: pontualidade 
+          },
           aguardandoCarregamento: { dataHora: dataHoraChegada, timestamp: agora },
         },
       };
 
       await updateDoc(docRef, checkinData);
 
-      const historicoMotoristaRef = collection(db, `motoristas/${motorista.cpf}/historicoCheckins`);
+      const historicoMotoristaRef = collection(db, `motoristas/${motoristaDocId}/historicoCheckins`);
       await addDoc(historicoMotoristaRef, {
         viagemId: viagemAtual.id,
         tipo: 'chegada_coleta',
@@ -208,9 +379,10 @@ const MenuMotorista = ({ navigation, route }: any) => {
         coletaCidade: viagemAtual.coletaCidade,
         coletaLocal: viagemAtual.coletaLocal,
         cidadeMotorista: motorista.cidade,
+        pontualidade: pontualidade,
       });
 
-      Alert.alert('Sucesso!', 'Chegada na coleta registrada.');
+      Alert.alert('Sucesso!', `Chegada na coleta registrada. Status: ${pontualidade}`);
       setModalVisible(false);
       setFotoChegada(null);
     } catch (error) {
@@ -218,6 +390,152 @@ const MenuMotorista = ({ navigation, route }: any) => {
       Alert.alert('Erro', 'Não foi possível registrar a chegada.');
     } finally {
       setSubindoFoto(false);
+    }
+  };
+
+  const confirmarChegadaEntrega = async () => {
+    if (!viagemAtual || !motoristaDocId) return;
+
+    try {
+      const docRef = doc(db, viagemAtual.docId);
+      const agora = new Date();
+
+      const pontualidade = verificarPontualidade(dataHoraEntrega, viagemAtual.entregaHora);
+
+      const checkinData = {
+        chegadaEntrega: {
+          dataHora: dataHoraEntrega,
+          timestamp: agora,
+          cidade: motorista.cidade || viagemAtual.entregaCidade,
+          pontualidade: pontualidade,
+        },
+        status: 'chegou_entrega',
+        historicoStatus: {
+          ...viagemAtual.historicoStatus,
+          chegadaEntrega: { 
+            dataHora: dataHoraEntrega, 
+            timestamp: agora,
+            pontualidade: pontualidade 
+          },
+        },
+      };
+
+      await updateDoc(docRef, checkinData);
+
+      const historicoMotoristaRef = collection(db, `motoristas/${motoristaDocId}/historicoCheckins`);
+      await addDoc(historicoMotoristaRef, {
+        viagemId: viagemAtual.id,
+        tipo: 'chegada_entrega',
+        dataHora: dataHoraEntrega,
+        timestamp: agora,
+        entregaCidade: viagemAtual.entregaCidade,
+        entregaLocal: viagemAtual.entregaLocal,
+        cidadeMotorista: motorista.cidade,
+        pontualidade: pontualidade,
+      });
+
+      Alert.alert('Sucesso!', `Chegada na entrega registrada. Status: ${pontualidade}`);
+      setModalEntregaVisible(false);
+    } catch (error) {
+      console.error('Erro ao registrar entrega:', error);
+      Alert.alert('Erro', 'Não foi possível registrar a entrega.');
+    }
+  };
+
+  const confirmarDevolucao = async () => {
+    if (!viagemAtual || !motoristaDocId) return;
+    setSubindoDevolucao(true);
+    try {
+      const docRef = doc(db, viagemAtual.docId);
+      const agora = new Date();
+      const dataFormatada = `${String(agora.getDate()).padStart(2, '0')}/${String(agora.getMonth() + 1).padStart(2, '0')}/${agora.getFullYear()} ${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`;
+
+      let fotosUrls: string[] = [];
+      if (fotosDevolucao.length > 0) {
+        fotosUrls = await uploadMultiplasFotos(fotosDevolucao, viagemAtual.id, 'devolucao');
+      }
+
+      const devolucaoData = {
+        devolucao: {
+          dataHora: dataFormatada,
+          timestamp: agora,
+          fotosUrls: fotosUrls.length > 0 ? fotosUrls : null,
+        },
+        historicoStatus: {
+          ...viagemAtual.historicoStatus,
+          devolucao: { dataHora: dataFormatada, timestamp: agora, fotosUrls },
+        },
+      };
+
+      await updateDoc(docRef, devolucaoData);
+
+      const historicoMotoristaRef = collection(db, `motoristas/${motoristaDocId}/historicoCheckins`);
+      await addDoc(historicoMotoristaRef, {
+        viagemId: viagemAtual.id,
+        tipo: 'devolucao',
+        dataHora: dataFormatada,
+        timestamp: agora,
+        fotosUrls,
+      });
+
+      Alert.alert('Sucesso!', 'Devolução registrada.');
+      setModalDevolucaoVisible(false);
+      setFotosDevolucao([]);
+    } catch (error) {
+      console.error('Erro ao registrar devolução:', error);
+      Alert.alert('Erro', 'Não foi possível registrar a devolução.');
+    } finally {
+      setSubindoDevolucao(false);
+    }
+  };
+
+  const confirmarCanhotos = async () => {
+    if (!viagemAtual || !motoristaDocId) return;
+    setSubindoCanhotos(true);
+    try {
+      const docRef = doc(db, viagemAtual.docId);
+      const agora = new Date();
+      const dataFormatada = `${String(agora.getDate()).padStart(2, '0')}/${String(agora.getMonth() + 1).padStart(2, '0')}/${agora.getFullYear()} ${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`;
+
+      let fotosUrls: string[] = [];
+      if (fotosCanhotos.length > 0) {
+        fotosUrls = await uploadMultiplasFotos(fotosCanhotos, viagemAtual.id, 'canhoto');
+      }
+
+      const canhotosData = {
+        canhotos: {
+          dataHora: dataFormatada,
+          timestamp: agora,
+          fotosUrls: fotosUrls.length > 0 ? fotosUrls : null,
+        },
+        status: 'entregue',
+        dataEntrega: dataFormatada,
+        historicoStatus: {
+          ...viagemAtual.historicoStatus,
+          canhotos: { dataHora: dataFormatada, timestamp: agora, fotosUrls },
+          entregue: { dataHora: dataFormatada, timestamp: agora },
+        },
+      };
+
+      await updateDoc(docRef, canhotosData);
+
+      const historicoMotoristaRef = collection(db, `motoristas/${motoristaDocId}/historicoCheckins`);
+      await addDoc(historicoMotoristaRef, {
+        viagemId: viagemAtual.id,
+        tipo: 'entrega_canhotos',
+        dataHora: dataFormatada,
+        timestamp: agora,
+        fotosUrls,
+      });
+
+      Alert.alert('Sucesso!', 'Canhotos entregues. Viagem finalizada.');
+      setModalCanhotosVisible(false);
+      setFotosCanhotos([]);
+    } catch (error) {
+      console.error('Erro ao registrar canhotos:', error);
+      Alert.alert('Erro', 'Não foi possível registrar os canhotos.');
+    } finally {
+      setSubindoCanhotos(false);
     }
   };
 
@@ -233,9 +551,10 @@ const MenuMotorista = ({ navigation, route }: any) => {
 
   const getStatusViagemAtual = (status: string) => {
     switch (status?.toLowerCase()) {
-      case 'programada': return { label: 'PROGRAMADA', color: '#FFD700', acao: 'checkin' };
+      case 'programada': return { label: 'PROGRAMADA', color: '#FFD700', acao: 'checkin_coleta' };
       case 'aguardando_carregamento': return { label: 'AGUARDANDO CARREGAMENTO', color: '#FFD700' };
-      case 'seguindo_para_entrega': return { label: 'EM ROTA PARA ENTREGA', color: '#22C55E' };
+      case 'seguindo_para_entrega': return { label: 'EM ROTA PARA ENTREGA', color: '#22C55E', acao: 'checkin_entrega' };
+      case 'chegou_entrega': return { label: 'CHEGOU NA ENTREGA', color: '#3B82F6', acao: 'pos_entrega' };
       default: return { label: 'EM ANDAMENTO', color: '#3B82F6' };
     }
   };
@@ -249,13 +568,20 @@ const MenuMotorista = ({ navigation, route }: any) => {
     );
   }
 
-  const statusAtual = viagemAtual? getStatusViagemAtual(viagemAtual.status) : null;
+  const statusAtual = viagemAtual ? getStatusViagemAtual(viagemAtual.status) : null;
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView 
+      style={styles.container} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+    >
       <StatusBar barStyle="light-content" backgroundColor="#000" />
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.header}>
           <Text style={styles.title}>MENU MOTORISTA</Text>
           <Text style={styles.subtitle}>Bem-vindo de volta</Text>
@@ -284,12 +610,12 @@ const MenuMotorista = ({ navigation, route }: any) => {
         <View style={styles.viagemAtualContainer}>
           <Text style={styles.sectionTitle}>SUA VIAGEM ATUAL</Text>
 
-          {loadingViagem? (
+          {loadingViagem ? (
             <View style={styles.noViagemCard}>
               <ActivityIndicator size="large" color="#FFD700" />
               <Text style={[styles.noViagemText, { marginTop: 12 }]}>Buscando viagem...</Text>
             </View>
-          ) : viagemAtual? (
+          ) : viagemAtual ? (
             <View style={styles.viagemAtualCard}>
               <TouchableOpacity
                 onPress={() => navigation.navigate('HistoricoViagens', {
@@ -314,6 +640,7 @@ const MenuMotorista = ({ navigation, route }: any) => {
                     <Text style={styles.cidadeLabel}>COLETA</Text>
                     <Text style={styles.cidadeNome} numberOfLines={2}>{viagemAtual.coletaCidade || '—'}</Text>
                     <Text style={styles.dataText}>{viagemAtual.coletaData || '—'}</Text>
+                    <Text style={styles.horarioText}>{viagemAtual.coletaHora || '—'}</Text>
                     <Text style={styles.clienteText} numberOfLines={2}>
                       {viagemAtual.clienteColeta || viagemAtual.coletaLocal || '—'}
                     </Text>
@@ -325,6 +652,7 @@ const MenuMotorista = ({ navigation, route }: any) => {
                     <Text style={styles.cidadeLabel}>ENTREGA</Text>
                     <Text style={styles.cidadeNome} numberOfLines={2}>{viagemAtual.entregaCidade || '—'}</Text>
                     <Text style={styles.dataText}>{viagemAtual.entregaData || '—'}</Text>
+                    <Text style={styles.horarioText}>{viagemAtual.entregaHora || '—'}</Text>
                     <Text style={styles.clienteText} numberOfLines={2}>
                       {viagemAtual.clienteEntrega || viagemAtual.entregaLocal || '—'}
                     </Text>
@@ -332,9 +660,42 @@ const MenuMotorista = ({ navigation, route }: any) => {
                 </View>
 
                 {viagemAtual.chegadaColeta && (
+                  <View style={[styles.checkinInfo, viagemAtual.chegadaColeta.pontualidade === 'No Show' ? styles.noShowInfo : styles.onTimeInfo]}>
+                    <Ionicons 
+                      name={viagemAtual.chegadaColeta.pontualidade === 'On Time' ? "checkmark-circle" : "alert-circle"} 
+                      size={14} 
+                      color={viagemAtual.chegadaColeta.pontualidade === 'On Time' ? "#22C55E" : "#EF4444"} 
+                    />
+                    <Text style={[styles.checkinText, viagemAtual.chegadaColeta.pontualidade === 'No Show' ? styles.noShowText : styles.onTimeText]}>
+                      Checkin Coleta: {viagemAtual.chegadaColeta.dataHora} ({viagemAtual.chegadaColeta.pontualidade})
+                    </Text>
+                  </View>
+                )}
+
+                {viagemAtual.chegadaEntrega && (
+                  <View style={[styles.checkinInfo, viagemAtual.chegadaEntrega.pontualidade === 'No Show' ? styles.noShowInfo : styles.onTimeInfo]}>
+                    <Ionicons 
+                      name={viagemAtual.chegadaEntrega.pontualidade === 'On Time' ? "checkmark-circle" : "alert-circle"} 
+                      size={14} 
+                      color={viagemAtual.chegadaEntrega.pontualidade === 'On Time' ? "#22C55E" : "#EF4444"} 
+                    />
+                    <Text style={[styles.checkinText, viagemAtual.chegadaEntrega.pontualidade === 'No Show' ? styles.noShowText : styles.onTimeText]}>
+                      Chegada Entrega: {viagemAtual.chegadaEntrega.dataHora} ({viagemAtual.chegadaEntrega.pontualidade})
+                    </Text>
+                  </View>
+                )}
+
+                {viagemAtual.devolucao && (
                   <View style={styles.checkinInfo}>
                     <Ionicons name="checkmark-circle" size={14} color="#22C55E" />
-                    <Text style={styles.checkinText}>Checkin: {viagemAtual.chegadaColeta.dataHora}</Text>
+                    <Text style={styles.checkinText}>Devolução: {viagemAtual.devolucao.dataHora}</Text>
+                  </View>
+                )}
+
+                {viagemAtual.canhotos && (
+                  <View style={styles.checkinInfo}>
+                    <Ionicons name="checkmark-circle" size={14} color="#22C55E" />
+                    <Text style={styles.checkinText}>Canhotos: {viagemAtual.canhotos.dataHora}</Text>
                   </View>
                 )}
 
@@ -345,11 +706,36 @@ const MenuMotorista = ({ navigation, route }: any) => {
                 </View>
               </TouchableOpacity>
 
-              {statusAtual?.acao === 'checkin' && (
-                <TouchableOpacity style={styles.botaoCheckin} onPress={registrarChegadaColeta}>
-                  <Ionicons name="location" size={18} color="#000" />
-                  <Text style={styles.botaoCheckinText}>Fazer Check-in na Coleta</Text>
+              {viagemAtual.status === 'aguardando_carregamento' && (
+                <TouchableOpacity style={styles.botaoIniciarViagem} onPress={iniciarViagem}>
+                  <Ionicons name="car-sport" size={20} color="#000" />
+                  <Text style={styles.botaoIniciarText}>Iniciar Viagem para Entrega</Text>
                 </TouchableOpacity>
+              )}
+
+              {viagemAtual.status === 'seguindo_para_entrega' && (
+                <TouchableOpacity style={styles.botaoChegadaEntrega} onPress={registrarChegadaEntrega}>
+                  <Ionicons name="flag" size={20} color="#000" />
+                  <Text style={styles.botaoIniciarText}>Registrar Chegada na Entrega</Text>
+                </TouchableOpacity>
+              )}
+
+              {viagemAtual.status === 'chegou_entrega' && (
+                <>
+                  {!viagemAtual.devolucao && (
+                    <TouchableOpacity style={styles.botaoPosEntrega} onPress={() => setModalDevolucaoVisible(true)}>
+                      <MaterialIcons name="assignment-return" size={20} color="#000" />
+                      <Text style={styles.botaoIniciarText}>Registrar Devolução</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {!viagemAtual.canhotos && (
+                    <TouchableOpacity style={styles.botaoPosEntrega} onPress={() => setModalCanhotosVisible(true)}>
+                      <Ionicons name="document-text" size={20} color="#000" />
+                      <Text style={styles.botaoIniciarText}>Entregar Canhotos</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
               )}
             </View>
           ) : (
@@ -362,8 +748,25 @@ const MenuMotorista = ({ navigation, route }: any) => {
 
         <Text style={styles.menuTitle}>MAIS OPÇÕES</Text>
 
-        {/* MENU DE RODAPÉ AGORA AQUI - MAIS ALTO E PERTO DO "MAIS OPÇÕES" */}
         <View style={styles.bottomMenu}>
+          {viagemAtual && statusAtual?.acao === 'checkin_coleta' && (
+            <TouchableOpacity style={styles.menuItem} onPress={registrarChegadaColeta}>
+              <View style={[styles.menuIcon, { backgroundColor: '#FFD700' }]}>
+                <Ionicons name="location" size={30} color="#000" />
+              </View>
+              <Text style={[styles.menuText, { color: '#FFD700', fontWeight: '700' }]}>Check-in Coleta</Text>
+            </TouchableOpacity>
+          )}
+
+          {viagemAtual && statusAtual?.acao === 'checkin_entrega' && (
+            <TouchableOpacity style={styles.menuItem} onPress={registrarChegadaEntrega}>
+              <View style={[styles.menuIcon, { backgroundColor: '#22C55E' }]}>
+                <Ionicons name="flag" size={30} color="#000" />
+              </View>
+              <Text style={[styles.menuText, { color: '#22C55E', fontWeight: '700' }]}>Chegada Entrega</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             style={styles.menuItem}
             onPress={() => navigation.navigate('HistoricoViagens', {
@@ -416,84 +819,247 @@ const MenuMotorista = ({ navigation, route }: any) => {
         <View style={{ height: 40 }} />
       </ScrollView>
 
+      {/* MODAL CHECK-IN COLETA */}
       <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitulo}>Check-in na Coleta</Text>
 
-            <View style={styles.infoViagemModal}>
-              <Text style={styles.infoLabel}>Local</Text>
-              <Text style={styles.infoValue}>{viagemAtual?.coletaLocal}</Text>
-              <Text style={styles.infoLabel}>Cidade</Text>
-              <Text style={styles.infoValue}>{viagemAtual?.coletaCidade}</Text>
-            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.infoViagemModal}>
+                <Text style={styles.infoLabel}>Local</Text>
+                <Text style={styles.infoValue}>{viagemAtual?.coletaLocal}</Text>
+                <Text style={styles.infoLabel}>Cidade</Text>
+                <Text style={styles.infoValue}>{viagemAtual?.coletaCidade}</Text>
+                <Text style={styles.infoLabel}>Horário Programado</Text>
+                <Text style={styles.infoValue}>{viagemAtual?.coletaHora || 'Não definido'}</Text>
+              </View>
 
-            <View style={styles.dataHoraContainer}>
-              <Text style={styles.label}>Data e Hora da Chegada</Text>
-              <TextInput
-                style={styles.inputDataHora}
-                value={dataHoraChegada}
-                onChangeText={setDataHoraChegada}
-                placeholder="DD/MM/AAAA HH:MM"
-                placeholderTextColor="#666"
-              />
-            </View>
+              <View style={styles.dataHoraContainer}>
+                <Text style={styles.label}>Data e Hora da Chegada</Text>
+                <TextInput
+                  style={styles.inputDataHora}
+                  value={dataHoraChegada}
+                  onChangeText={setDataHoraChegada}
+                  placeholder="DD/MM/AAAA HH:MM"
+                  placeholderTextColor="#666"
+                />
+              </View>
 
-            <View style={styles.tipoFotoContainer}>
-              <Text style={styles.label}>Tipo de Comprovante</Text>
-              <View style={styles.tipoFotoOptions}>
-                <TouchableOpacity
-                  style={[styles.tipoFotoOption, tipoFoto === 'selfie' && styles.tipoFotoOptionActive]}
-                  onPress={() => setTipoFoto('selfie')}
-                >
-                  <Ionicons name="person" size={20} color={tipoFoto === 'selfie'? '#000' : '#FFD700'} />
-                  <Text style={[styles.tipoFotoText, tipoFoto === 'selfie' && styles.tipoFotoTextActive]}>Selfie</Text>
+              <View style={styles.tipoFotoContainer}>
+                <Text style={styles.label}>Tipo de Comprovante</Text>
+                <View style={styles.tipoFotoOptions}>
+                  <TouchableOpacity
+                    style={[styles.tipoFotoOption, tipoFoto === 'selfie' && styles.tipoFotoOptionActive]}
+                    onPress={() => setTipoFoto('selfie')}
+                  >
+                    <Ionicons name="person" size={20} color={tipoFoto === 'selfie' ? '#000' : '#FFD700'} />
+                    <Text style={[styles.tipoFotoText, tipoFoto === 'selfie' && styles.tipoFotoTextActive]}>Selfie</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.tipoFotoOption, tipoFoto === 'documento' && styles.tipoFotoOptionActive]}
+                    onPress={() => setTipoFoto('documento')}
+                  >
+                    <Ionicons name="document" size={20} color={tipoFoto === 'documento' ? '#000' : '#FFD700'} />
+                    <Text style={[styles.tipoFotoText, tipoFoto === 'documento' && styles.tipoFotoTextActive]}>Comprovante</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.fotoContainer}>
+                <Text style={styles.label}>Foto do Comprovante</Text>
+                {fotoChegada ? (
+                  <View style={styles.fotoPreviewContainer}>
+                    <Image source={{ uri: fotoChegada }} style={styles.fotoPreview} />
+                    <TouchableOpacity style={styles.removerFoto} onPress={() => setFotoChegada(null)}>
+                      <Ionicons name="close-circle" size={28} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.botoesFotoRow}>
+                    <TouchableOpacity style={styles.botaoFotoHorizontal} onPress={() => tirarFoto(setFotoChegada)}>
+                      <Ionicons name="camera" size={24} color="#FFD700" />
+                      <Text style={styles.botaoFotoTextHorizontal}>Câmera</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.botaoFotoHorizontal} onPress={() => escolherFotoGaleria(setFotoChegada)}>
+                      <Ionicons name="images" size={24} color="#FFD700" />
+                      <Text style={styles.botaoFotoTextHorizontal}>Galeria</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.modalBotoes}>
+                <TouchableOpacity style={styles.botaoCancelar} onPress={() => { setModalVisible(false); setFotoChegada(null); }}>
+                  <Text style={styles.botaoCancelarText}>Cancelar</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.tipoFotoOption, tipoFoto === 'documento' && styles.tipoFotoOptionActive]}
-                  onPress={() => setTipoFoto('documento')}
-                >
-                  <Ionicons name="document" size={20} color={tipoFoto === 'documento'? '#000' : '#FFD700'} />
-                  <Text style={[styles.tipoFotoText, tipoFoto === 'documento' && styles.tipoFotoTextActive]}>Comprovante</Text>
+                <TouchableOpacity style={[styles.botaoConfirmar, !fotoChegada && styles.botaoConfirmarDisabled]} onPress={confirmarChegada} disabled={subindoFoto || !fotoChegada}>
+                  {subindoFoto ? <ActivityIndicator color="#000" /> : <Text style={styles.botaoConfirmarText}>Confirmar Check-in</Text>}
                 </TouchableOpacity>
               </View>
-            </View>
-
-            <View style={styles.fotoContainer}>
-              <Text style={styles.label}>Foto</Text>
-              {fotoChegada? (
-                <View style={styles.fotoPreviewContainer}>
-                  <Image source={{ uri: fotoChegada }} style={styles.fotoPreview} />
-                  <TouchableOpacity style={styles.removerFoto} onPress={() => setFotoChegada(null)}>
-                    <Ionicons name="close-circle" size={28} color="#EF4444" />
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View style={styles.botoesFoto}>
-                  <TouchableOpacity style={styles.botaoFoto} onPress={tirarFoto}>
-                    <Ionicons name="camera" size={24} color="#FFD700" />
-                    <Text style={styles.botaoFotoText}>Câmera</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.botaoFoto} onPress={escolherFotoGaleria}>
-                    <Ionicons name="images" size={24} color="#FFD700" />
-                    <Text style={styles.botaoFotoText}>Galeria</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.modalBotoes}>
-              <TouchableOpacity style={styles.botaoCancelar} onPress={() => { setModalVisible(false); setFotoChegada(null); }}>
-                <Text style={styles.botaoCancelarText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.botaoConfirmar} onPress={confirmarChegada} disabled={subindoFoto}>
-                {subindoFoto? <ActivityIndicator color="#000" /> : <Text style={styles.botaoConfirmarText}>Confirmar</Text>}
-              </TouchableOpacity>
-            </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
-    </View>
+
+      {/* MODAL CHECK-IN ENTREGA */}
+      <Modal animationType="slide" transparent={true} visible={modalEntregaVisible} onRequestClose={() => setModalEntregaVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitulo}>Chegada na Entrega</Text>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.infoViagemModal}>
+                <Text style={styles.infoLabel}>Local</Text>
+                <Text style={styles.infoValue}>{viagemAtual?.entregaLocal || viagemAtual?.clienteEntrega}</Text>
+                <Text style={styles.infoLabel}>Cidade</Text>
+                <Text style={styles.infoValue}>{viagemAtual?.entregaCidade}</Text>
+                <Text style={styles.infoLabel}>Horário Programado</Text>
+                <Text style={styles.infoValue}>{viagemAtual?.entregaHora || 'Não definido'}</Text>
+              </View>
+
+              <View style={styles.dataHoraContainer}>
+                <Text style={styles.label}>Data e Hora da Chegada</Text>
+                <TextInput
+                  style={styles.inputDataHora}
+                  value={dataHoraEntrega}
+                  onChangeText={setDataHoraEntrega}
+                  placeholder="DD/MM/AAAA HH:MM"
+                  placeholderTextColor="#666"
+                />
+              </View>
+
+              <View style={styles.modalBotoes}>
+                <TouchableOpacity style={styles.botaoCancelar} onPress={() => setModalEntregaVisible(false)}>
+                  <Text style={styles.botaoCancelarText}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.botaoConfirmar, { backgroundColor: '#22C55E' }]} onPress={confirmarChegadaEntrega}>
+                  <Text style={styles.botaoConfirmarText}>Confirmar Chegada</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL DEVOLUÇÃO */}
+      <Modal animationType="slide" transparent={true} visible={modalDevolucaoVisible} onRequestClose={() => setModalDevolucaoVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitulo}>Registrar Devolução</Text>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.infoViagemModal}>
+                <Text style={styles.infoLabel}>Viagem</Text>
+                <Text style={styles.infoValue}>{viagemAtual?.coletaCidade} → {viagemAtual?.entregaCidade}</Text>
+                <Text style={styles.infoLabel}>DT</Text>
+                <Text style={styles.infoValue}>{viagemAtual?.dt || '—'}</Text>
+              </View>
+
+              <View style={styles.fotoContainer}>
+                <Text style={styles.label}>Fotos da Devolução (Opcional)</Text>
+                <Text style={styles.subLabel}>Adicione quantas fotos precisar</Text>
+                
+                {fotosDevolucao.length > 0 && (
+                  <ScrollView horizontal style={styles.fotosArrayContainer} showsHorizontalScrollIndicator={false}>
+                    {fotosDevolucao.map((uri, index) => (
+                      <View key={index} style={styles.fotoArrayItem}>
+                        <Image source={{ uri }} style={styles.fotoArrayPreview} />
+                        <TouchableOpacity 
+                          style={styles.removerFotoArray} 
+                          onPress={() => removerFotoArray(index, fotosDevolucao, setFotosDevolucao)}
+                        >
+                          <Ionicons name="close-circle" size={24} color="#EF4444" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </ScrollView>
+                )}
+
+                <View style={styles.botoesFotoRow}>
+                  <TouchableOpacity style={styles.botaoFotoHorizontal} onPress={() => adicionarFotoArray(fotosDevolucao, setFotosDevolucao)}>
+                    <Ionicons name="camera" size={24} color="#FFD700" />
+                    <Text style={styles.botaoFotoTextHorizontal}>Câmera</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.botaoFotoHorizontal} onPress={() => adicionarFotoGaleriaArray(fotosDevolucao, setFotosDevolucao)}>
+                    <Ionicons name="images" size={24} color="#FFD700" />
+                    <Text style={styles.botaoFotoTextHorizontal}>Galeria</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.modalBotoes}>
+                <TouchableOpacity style={styles.botaoCancelar} onPress={() => { setModalDevolucaoVisible(false); setFotosDevolucao([]); }}>
+                  <Text style={styles.botaoCancelarText}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.botaoConfirmar, { backgroundColor: '#3B82F6' }]} onPress={confirmarDevolucao} disabled={subindoDevolucao}>
+                  {subindoDevolucao ? <ActivityIndicator color="#000" /> : <Text style={styles.botaoConfirmarText}>Confirmar</Text>}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL CANHOTOS */}
+      <Modal animationType="slide" transparent={true} visible={modalCanhotosVisible} onRequestClose={() => setModalCanhotosVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitulo}>Entregar Canhotos</Text>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.infoViagemModal}>
+                <Text style={styles.infoLabel}>Viagem</Text>
+                <Text style={styles.infoValue}>{viagemAtual?.coletaCidade} → {viagemAtual?.entregaCidade}</Text>
+                <Text style={styles.infoLabel}>DT</Text>
+                <Text style={styles.infoValue}>{viagemAtual?.dt || '—'}</Text>
+              </View>
+
+              <View style={styles.fotoContainer}>
+                <Text style={styles.label}>Fotos dos Canhotos (Opcional)</Text>
+                <Text style={styles.subLabel}>Adicione quantas fotos precisar</Text>
+                
+                {fotosCanhotos.length > 0 && (
+                  <ScrollView horizontal style={styles.fotosArrayContainer} showsHorizontalScrollIndicator={false}>
+                    {fotosCanhotos.map((uri, index) => (
+                      <View key={index} style={styles.fotoArrayItem}>
+                        <Image source={{ uri }} style={styles.fotoArrayPreview} />
+                        <TouchableOpacity 
+                          style={styles.removerFotoArray} 
+                          onPress={() => removerFotoArray(index, fotosCanhotos, setFotosCanhotos)}
+                        >
+                          <Ionicons name="close-circle" size={24} color="#EF4444" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </ScrollView>
+                )}
+
+                <View style={styles.botoesFotoRow}>
+                  <TouchableOpacity style={styles.botaoFotoHorizontal} onPress={() => adicionarFotoArray(fotosCanhotos, setFotosCanhotos)}>
+                    <Ionicons name="camera" size={24} color="#FFD700" />
+                    <Text style={styles.botaoFotoTextHorizontal}>Câmera</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.botaoFotoHorizontal} onPress={() => adicionarFotoGaleriaArray(fotosCanhotos, setFotosCanhotos)}>
+                    <Ionicons name="images" size={24} color="#FFD700" />
+                    <Text style={styles.botaoFotoTextHorizontal}>Galeria</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.modalBotoes}>
+                <TouchableOpacity style={styles.botaoCancelar} onPress={() => { setModalCanhotosVisible(false); setFotosCanhotos([]); }}>
+                  <Text style={styles.botaoCancelarText}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.botaoConfirmar, { backgroundColor: '#8B5CF6' }]} onPress={confirmarCanhotos} disabled={subindoCanhotos}>
+                  {subindoCanhotos ? <ActivityIndicator color="#000" /> : <Text style={styles.botaoConfirmarText}>Finalizar Viagem</Text>}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -565,6 +1131,7 @@ const styles = StyleSheet.create({
   cidadeLabel: { fontSize: 9, color: '#666', marginBottom: 3, fontWeight: '700', letterSpacing: 0.5 },
   cidadeNome: { fontSize: 13.5, fontWeight: '700', color: '#FFF', textAlign: 'center', minHeight: 32 },
   dataText: { fontSize: 10.5, color: '#888', marginTop: 2 },
+  horarioText: { fontSize: 10.5, color: '#FFD700', marginTop: 2, fontWeight: '600' },
   clienteText: { fontSize: 11, color: '#AAA', marginTop: 4, textAlign: 'center', fontWeight: '500' },
   arrowIcon: { marginTop: 20 },
 
@@ -572,12 +1139,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: '#22C55E15',
     padding: 6,
     borderRadius: 6,
     marginTop: 6
   },
-  checkinText: { fontSize: 11, color: '#22C55E', fontWeight: '600' },
+  onTimeInfo: { backgroundColor: '#22C55E15' },
+  noShowInfo: { backgroundColor: '#EF444415' },
+  checkinText: { fontSize: 11, fontWeight: '600' },
+  onTimeText: { color: '#22C55E' },
+  noShowText: { color: '#EF4444' },
 
   infoRow: {
     flexDirection: 'row',
@@ -590,17 +1160,43 @@ const styles = StyleSheet.create({
   },
   infoText: { fontSize: 11.5, color: '#CCC', fontWeight: '600', flex: 1, textAlign: 'center' },
 
-  botaoCheckin: {
+  botaoIniciarViagem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFD700',
-    paddingVertical: 11,
-    borderRadius: 10,
-    marginTop: 10,
-    gap: 6
+    backgroundColor: '#22C55E',
+    paddingVertical: 13,
+    borderRadius: 12,
+    marginTop: 12,
+    gap: 8,
   },
-  botaoCheckinText: { color: '#000', fontSize: 14, fontWeight: '700' },
+  botaoIniciarText: {
+    color: '#000',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+
+  botaoChegadaEntrega: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#22C55E',
+    paddingVertical: 13,
+    borderRadius: 12,
+    marginTop: 12,
+    gap: 8,
+  },
+
+  botaoPosEntrega: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#3B82F6',
+    paddingVertical: 13,
+    borderRadius: 12,
+    marginTop: 12,
+    gap: 8,
+  },
 
   noViagemCard: {
     backgroundColor: '#0A0A0A',
@@ -626,7 +1222,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 20
   },
 
-  // MENU AGORA FICA DENTRO DO SCROLL, LOGO ABAIXO DE "MAIS OPÇÕES"
   bottomMenu: {
     backgroundColor: '#0A0A0A',
     borderRadius: 20,
@@ -637,9 +1232,11 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     marginHorizontal: 20,
     marginBottom: 30,
+    flexWrap: 'wrap',
+    gap: 12,
   },
-  menuItem: { alignItems: 'center', flex: 1 },
-  logoutItem: { alignItems: 'center', flex: 1 },
+  menuItem: { alignItems: 'center', flex: 1, minWidth: 80 },
+  logoutItem: { alignItems: 'center', flex: 1, minWidth: 80 },
   menuIcon: {
     width: 54,
     height: 54,
@@ -649,7 +1246,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
   },
-  menuText: { fontSize: 11.5, color: '#CCC', fontWeight: '600' },
+  menuText: { fontSize: 11.5, color: '#CCC', fontWeight: '600', textAlign: 'center' },
   logoutText: { fontSize: 11.5, color: '#EF4444', fontWeight: '900' },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' },
@@ -669,6 +1266,7 @@ const styles = StyleSheet.create({
 
   dataHoraContainer: { marginBottom: 18 },
   label: { fontSize: 13, fontWeight: '600', color: '#AAA', marginBottom: 6 },
+  subLabel: { fontSize: 11, color: '#666', marginBottom: 8 },
   inputDataHora: {
     borderWidth: 1,
     borderColor: '#333',
@@ -697,19 +1295,28 @@ const styles = StyleSheet.create({
   tipoFotoTextActive: { color: '#000' },
 
   fotoContainer: { marginBottom: 20 },
-  botoesFoto: { flexDirection: 'row', gap: 10, marginTop: 8 },
-  botaoFoto: {
+  botoesFotoRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  botaoFotoHorizontal: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: '#FFD700',
     borderRadius: 12,
-    gap: 8
+    gap: 8,
+    backgroundColor: '#1A1A1A',
   },
-  botaoFotoText: { fontSize: 14, color: '#FFD700', fontWeight: '600' },
+  botaoFotoTextHorizontal: {
+    fontSize: 14,
+    color: '#FFD700',
+    fontWeight: '600',
+  },
   fotoPreviewContainer: { position: 'relative', marginTop: 8 },
   fotoPreview: { width: '100%', height: 200, borderRadius: 12, resizeMode: 'cover' },
   removerFoto: {
@@ -720,8 +1327,23 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 2
   },
+  botaoConfirmarDisabled: {
+    backgroundColor: '#666',
+    opacity: 0.5,
+  },
 
-  modalBotoes: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  fotosArrayContainer: { flexDirection: 'row', marginTop: 8, marginBottom: 8 },
+  fotoArrayItem: { position: 'relative', marginRight: 10 },
+  fotoArrayPreview: { width: 100, height: 100, borderRadius: 10 },
+  removerFotoArray: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#000',
+    borderRadius: 12,
+  },
+
+  modalBotoes: { flexDirection: 'row', gap: 12, marginTop: 8, marginBottom: 8 },
   botaoCancelar: {
     flex: 1,
     paddingVertical: 13,
