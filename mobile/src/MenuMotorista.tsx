@@ -17,10 +17,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialIcons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
-import { collection, query, where, getDocs, limit, collectionGroup, orderBy, doc, updateDoc, addDoc, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit, collectionGroup, orderBy, doc, updateDoc, addDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import * as ImagePicker from 'expo-image-picker';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import * as Location from 'expo-location';
 
 const MenuMotorista = ({ navigation, route }: any) => {
   const { userId, email: loggedEmail } = route.params || {};
@@ -40,6 +41,16 @@ const MenuMotorista = ({ navigation, route }: any) => {
   const [viagemAtual, setViagemAtual] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [loadingViagem, setLoadingViagem] = useState(false);
+  
+  // Estado para localização
+  const [localizacaoAtual, setLocalizacaoAtual] = useState({
+    cidade: 'Carregando...',
+    estado: '',
+    latitude: null,
+    longitude: null,
+    atualizando: false,
+    ultimaAtualizacao: null
+  });
 
   // Modal Check-in Coleta
   const [modalVisible, setModalVisible] = useState(false);
@@ -78,6 +89,198 @@ const MenuMotorista = ({ navigation, route }: any) => {
     };
   }, [motorista.cpf]);
 
+  // Iniciar localização quando tiver o motoristaDocId
+  useEffect(() => {
+    if (motoristaDocId) {
+      iniciarRastreamentoLocalizacao();
+    }
+  }, [motoristaDocId]);
+
+  const iniciarRastreamentoLocalizacao = async () => {
+    // Solicitar permissão
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      setLocalizacaoAtual(prev => ({ ...prev, cidade: 'Permissão negada' }));
+      return;
+    }
+
+    // Buscar localização atual
+    await buscarLocalizacaoAtual();
+
+    // Configurar atualização periódica a cada 5 minutos
+    const intervalId = setInterval(() => {
+      buscarLocalizacaoAtual();
+    }, 5 * 60 * 1000); // 5 minutos
+
+    return () => clearInterval(intervalId);
+  };
+
+  const buscarLocalizacaoAtual = async () => {
+    if (!motoristaDocId) return;
+    
+    setLocalizacaoAtual(prev => ({ ...prev, atualizando: true }));
+    
+    try {
+      // Tentar obter localização com alta precisão
+      let location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      }).catch(async () => {
+        // Se falhar, tentar com precisão balanceada
+        return await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+      });
+
+      const { latitude, longitude } = location.coords;
+      
+      // Tentar geocodificação reversa
+      let reverseGeocode = await Location.reverseGeocodeAsync({
+        latitude,
+        longitude,
+      });
+
+      // Se não conseguir obter a cidade, tentar obter a região aproximada
+      if (!reverseGeocode || reverseGeocode.length === 0 || !reverseGeocode[0].city) {
+        // Tentar obter apenas a região
+        const regionGeocode = await Location.reverseGeocodeAsync({
+          latitude,
+          longitude,
+          useGoogleMaps: false,
+        });
+        
+        if (regionGeocode && regionGeocode.length > 0) {
+          const { city, region, subregion, name } = regionGeocode[0];
+          const cidadeEncontrada = city || subregion || region || name || 'Área próxima';
+          const estado = region || '';
+          const cidadeFormatada = estado ? `${cidadeEncontrada} - ${estado}` : cidadeEncontrada;
+          
+          setLocalizacaoAtual({
+            cidade: cidadeFormatada,
+            estado: estado,
+            latitude: latitude,
+            longitude: longitude,
+            atualizando: false,
+            ultimaAtualizacao: new Date()
+          });
+          
+          await salvarLocalizacaoFirebase(cidadeFormatada, estado, latitude, longitude, cidadeEncontrada);
+          return;
+        }
+        
+        // Último recurso: usar coordenadas para buscar cidade mais próxima via API de fallback
+        const cidadeProxima = await buscarCidadeProximaPorCoordenadas(latitude, longitude);
+        
+        setLocalizacaoAtual({
+          cidade: cidadeProxima,
+          estado: '',
+          latitude: latitude,
+          longitude: longitude,
+          atualizando: false,
+          ultimaAtualizacao: new Date()
+        });
+        
+        await salvarLocalizacaoFirebase(cidadeProxima, '', latitude, longitude, cidadeProxima);
+        return;
+      }
+
+      const { city, region, country } = reverseGeocode[0];
+      const nomeCidade = city || 'Área próxima';
+      const estado = region || '';
+      const cidadeFormatada = estado ? `${nomeCidade} - ${estado}` : nomeCidade;
+
+      setLocalizacaoAtual({
+        cidade: cidadeFormatada,
+        estado: estado,
+        latitude: latitude,
+        longitude: longitude,
+        atualizando: false,
+        ultimaAtualizacao: new Date()
+      });
+
+      await salvarLocalizacaoFirebase(cidadeFormatada, estado, latitude, longitude, nomeCidade);
+      
+    } catch (error) {
+      console.error('Erro ao buscar localização:', error);
+      
+      // Tentar obter localização aproximada (menos precisa)
+      try {
+        const approxLocation = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Lowest,
+        });
+        
+        const { latitude, longitude } = approxLocation.coords;
+        const cidadeProxima = await buscarCidadeProximaPorCoordenadas(latitude, longitude);
+        
+        setLocalizacaoAtual(prev => ({
+          ...prev,
+          cidade: cidadeProxima,
+          latitude: latitude,
+          longitude: longitude,
+          atualizando: false,
+          ultimaAtualizacao: new Date()
+        }));
+        
+        await salvarLocalizacaoFirebase(cidadeProxima, '', latitude, longitude, cidadeProxima);
+      } catch (fallbackError) {
+        setLocalizacaoAtual(prev => ({
+          ...prev,
+          cidade: 'Localização aproximada',
+          atualizando: false,
+          ultimaAtualizacao: new Date()
+        }));
+      }
+    }
+  };
+
+  const buscarCidadeProximaPorCoordenadas = async (latitude: number, longitude: number): Promise<string> => {
+    // Fallback: retornar coordenadas formatadas caso não consiga obter a cidade
+    return `Lat: ${latitude.toFixed(4)}, Lon: ${longitude.toFixed(4)}`;
+  };
+
+  const salvarLocalizacaoFirebase = async (cidadeFormatada: string, estado: string, latitude: number, longitude: number, cidadeNome: string) => {
+    if (!motoristaDocId) return;
+
+    try {
+      const agora = new Date();
+      const dataFormatada = `${String(agora.getDate()).padStart(2, '0')}/${String(agora.getMonth() + 1).padStart(2, '0')}/${agora.getFullYear()} ${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`;
+      
+      // Salvar na subcoleção de localizações do motorista
+      const localizacaoRef = collection(db, `motoristas/${motoristaDocId}/localizacoes`);
+      await addDoc(localizacaoRef, {
+        cidade: cidadeFormatada,
+        cidadeNome: cidadeNome,
+        estado: estado,
+        latitude: latitude,
+        longitude: longitude,
+        dataHora: dataFormatada,
+        timestamp: serverTimestamp(),
+        viagemAtiva: viagemAtual ? {
+          id: viagemAtual.id,
+          dt: viagemAtual.dt,
+          coletaCidade: viagemAtual.coletaCidade,
+          entregaCidade: viagemAtual.entregaCidade,
+          status: viagemAtual.status
+        } : null
+      });
+
+      // Atualizar também a cidade atual no documento principal do motorista
+      const motoristaRef = doc(db, `motoristas/${motoristaDocId}`);
+      await updateDoc(motoristaRef, {
+        ultimaLocalizacao: {
+          cidade: cidadeFormatada,
+          estado: estado,
+          latitude: latitude,
+          longitude: longitude,
+          dataHora: dataFormatada,
+          timestamp: agora
+        }
+      });
+
+    } catch (error) {
+      console.error('Erro ao salvar localização:', error);
+    }
+  };
+
   const fetchMotoristaData = async () => {
     if (!userId) {
       setLoading(false);
@@ -91,7 +294,6 @@ const MenuMotorista = ({ navigation, route }: any) => {
         const doc = snapshot.docs[0];
         const data = doc.data();
         
-        // SALVAR O ID CORRETO DO DOCUMENTO DO MOTORISTA
         setMotoristaDocId(doc.id);
         
         setMotorista({
@@ -104,6 +306,18 @@ const MenuMotorista = ({ navigation, route }: any) => {
           foto: data.fotoPerfilUrl || `https://i.pravatar.cc/150?u=${userId}`,
           temMopp: data.temMopp === 'Sim',
         });
+
+        // Se tiver última localização salva, exibir
+        if (data.ultimaLocalizacao?.cidade) {
+          setLocalizacaoAtual(prev => ({
+            ...prev,
+            cidade: data.ultimaLocalizacao.cidade,
+            estado: data.ultimaLocalizacao.estado,
+            latitude: data.ultimaLocalizacao.latitude,
+            longitude: data.ultimaLocalizacao.longitude,
+            ultimaAtualizacao: data.ultimaLocalizacao.timestamp?.toDate() || null
+          }));
+        }
       } else {
         console.error('Documento do motorista não encontrado para uid:', userId);
         Alert.alert('Erro', 'Dados do motorista não encontrados. Contate o suporte.');
@@ -342,7 +556,7 @@ const MenuMotorista = ({ navigation, route }: any) => {
       const docRef = doc(db, viagemAtual.docId);
       const agora = new Date();
 
-      const pontualidade = verificarPontualidade(dataHoraChegada, viagemAtual.coletaHora);
+      const pontualidade = verificarPontualidade(dataHoraChegada, viagemAtual.coletaData);
 
       const checkinData = {
         chegadaColeta: {
@@ -400,7 +614,7 @@ const MenuMotorista = ({ navigation, route }: any) => {
       const docRef = doc(db, viagemAtual.docId);
       const agora = new Date();
 
-      const pontualidade = verificarPontualidade(dataHoraEntrega, viagemAtual.entregaHora);
+      const pontualidade = verificarPontualidade(dataHoraEntrega, viagemAtual.entregaData);
 
       const checkinData = {
         chegadaEntrega: {
@@ -502,18 +716,25 @@ const MenuMotorista = ({ navigation, route }: any) => {
         fotosUrls = await uploadMultiplasFotos(fotosCanhotos, viagemAtual.id, 'canhoto');
       }
 
+      // Apenas registra os canhotos e solicita finalização ao gestor - NÃO finaliza automaticamente
       const canhotosData = {
         canhotos: {
           dataHora: dataFormatada,
           timestamp: agora,
           fotosUrls: fotosUrls.length > 0 ? fotosUrls : null,
         },
-        status: 'entregue',
-        dataEntrega: dataFormatada,
+        aguardandoFinalizacaoGestor: true,
+        solicitacaoFinalizacao: {
+          dataHora: dataFormatada,
+          timestamp: agora,
+          status: 'pendente',
+          motoristaId: motoristaDocId,
+          motoristaNome: motorista.nome
+        },
         historicoStatus: {
           ...viagemAtual.historicoStatus,
           canhotos: { dataHora: dataFormatada, timestamp: agora, fotosUrls },
-          entregue: { dataHora: dataFormatada, timestamp: agora },
+          aguardandoGestor: { dataHora: dataFormatada, timestamp: agora },
         },
       };
 
@@ -526,9 +747,13 @@ const MenuMotorista = ({ navigation, route }: any) => {
         dataHora: dataFormatada,
         timestamp: agora,
         fotosUrls,
+        aguardandoGestor: true
       });
 
-      Alert.alert('Sucesso!', 'Canhotos entregues. Viagem finalizada.');
+      Alert.alert(
+        'Canhotos Registrados!', 
+        'Os canhotos foram enviados com sucesso. O gestor irá verificar e finalizar a viagem.'
+      );
       setModalCanhotosVisible(false);
       setFotosCanhotos([]);
     } catch (error) {
@@ -557,6 +782,15 @@ const MenuMotorista = ({ navigation, route }: any) => {
       case 'chegou_entrega': return { label: 'CHEGOU NA ENTREGA', color: '#3B82F6', acao: 'pos_entrega' };
       default: return { label: 'EM ANDAMENTO', color: '#3B82F6' };
     }
+  };
+
+  const formatarUltimaAtualizacao = () => {
+    if (!localizacaoAtual.ultimaAtualizacao) return 'Nunca atualizado';
+    const agora = new Date();
+    const diff = Math.floor((agora.getTime() - localizacaoAtual.ultimaAtualizacao.getTime()) / 1000 / 60);
+    if (diff < 1) return 'Agora mesmo';
+    if (diff === 1) return 'Há 1 minuto';
+    return `Há ${diff} minutos`;
   };
 
   if (loading) {
@@ -607,6 +841,26 @@ const MenuMotorista = ({ navigation, route }: any) => {
           </View>
         </View>
 
+        {/* Card de Localização Atual - SEM BOTÃO DE ATUALIZAR */}
+        <View style={styles.localizacaoCard}>
+          <View style={styles.localizacaoHeader}>
+            <Ionicons name="location" size={20} color="#FFD700" />
+            <Text style={styles.localizacaoTitulo}>Localização Atual</Text>
+            {localizacaoAtual.atualizando && (
+              <ActivityIndicator size="small" color="#FFD700" style={styles.localizacaoLoader} />
+            )}
+          </View>
+          
+          <View style={styles.localizacaoContent}>
+            <Ionicons name="navigate-circle" size={24} color="#FFD700" />
+            <Text style={styles.localizacaoCidade}>{localizacaoAtual.cidade}</Text>
+          </View>
+          
+          <Text style={styles.localizacaoAtualizacao}>
+            Atualização automática a cada 5 minutos • Última: {formatarUltimaAtualizacao()}
+          </Text>
+        </View>
+
         <View style={styles.viagemAtualContainer}>
           <Text style={styles.sectionTitle}>SUA VIAGEM ATUAL</Text>
 
@@ -620,7 +874,8 @@ const MenuMotorista = ({ navigation, route }: any) => {
               <TouchableOpacity
                 onPress={() => navigation.navigate('HistoricoViagens', {
                   cpfMotorista: motorista.cpf,
-                  nomeMotorista: motorista.nome
+                  nomeMotorista: motorista.nome,
+                  motoristaDocId: motoristaDocId
                 })}
               >
                 <View style={styles.linhaTopo}>
@@ -640,7 +895,6 @@ const MenuMotorista = ({ navigation, route }: any) => {
                     <Text style={styles.cidadeLabel}>COLETA</Text>
                     <Text style={styles.cidadeNome} numberOfLines={2}>{viagemAtual.coletaCidade || '—'}</Text>
                     <Text style={styles.dataText}>{viagemAtual.coletaData || '—'}</Text>
-                    <Text style={styles.horarioText}>{viagemAtual.coletaHora || '—'}</Text>
                     <Text style={styles.clienteText} numberOfLines={2}>
                       {viagemAtual.clienteColeta || viagemAtual.coletaLocal || '—'}
                     </Text>
@@ -652,7 +906,6 @@ const MenuMotorista = ({ navigation, route }: any) => {
                     <Text style={styles.cidadeLabel}>ENTREGA</Text>
                     <Text style={styles.cidadeNome} numberOfLines={2}>{viagemAtual.entregaCidade || '—'}</Text>
                     <Text style={styles.dataText}>{viagemAtual.entregaData || '—'}</Text>
-                    <Text style={styles.horarioText}>{viagemAtual.entregaHora || '—'}</Text>
                     <Text style={styles.clienteText} numberOfLines={2}>
                       {viagemAtual.clienteEntrega || viagemAtual.entregaLocal || '—'}
                     </Text>
@@ -699,12 +952,28 @@ const MenuMotorista = ({ navigation, route }: any) => {
                   </View>
                 )}
 
+                {viagemAtual.aguardandoFinalizacaoGestor && (
+                  <View style={[styles.checkinInfo, { backgroundColor: '#FFD70015' }]}>
+                    <Ionicons name="hourglass" size={14} color="#FFD700" />
+                    <Text style={[styles.checkinText, { color: '#FFD700' }]}>
+                      Aguardando gestor finalizar viagem
+                    </Text>
+                  </View>
+                )}
+
                 <View style={styles.infoRow}>
                   <Text style={styles.infoText}>🚛 {viagemAtual.placa || '—'}</Text>
-                  <Text style={styles.infoText}>🚚 {viagemAtual.placaCarreta || viagemAtual.carreta || '—'}</Text>
+                  <Text style={styles.infoText}>🚚 {viagemAtual.carreta || viagemAtual.placaCarreta || '—'}</Text>
                   <Text style={styles.infoText}>⚖️ {viagemAtual.peso || '—'}kg</Text>
                 </View>
               </TouchableOpacity>
+
+              {viagemAtual.status === 'programada' && (
+                <TouchableOpacity style={styles.botaoCheckinColeta} onPress={registrarChegadaColeta}>
+                  <Ionicons name="location" size={20} color="#000" />
+                  <Text style={styles.botaoIniciarText}>Check-in Coleta</Text>
+                </TouchableOpacity>
+              )}
 
               {viagemAtual.status === 'aguardando_carregamento' && (
                 <TouchableOpacity style={styles.botaoIniciarViagem} onPress={iniciarViagem}>
@@ -729,11 +998,18 @@ const MenuMotorista = ({ navigation, route }: any) => {
                     </TouchableOpacity>
                   )}
 
-                  {!viagemAtual.canhotos && (
-                    <TouchableOpacity style={styles.botaoPosEntrega} onPress={() => setModalCanhotosVisible(true)}>
+                  {!viagemAtual.canhotos && !viagemAtual.aguardandoFinalizacaoGestor && (
+                    <TouchableOpacity style={styles.botaoEntregarCanhotos} onPress={() => setModalCanhotosVisible(true)}>
                       <Ionicons name="document-text" size={20} color="#000" />
                       <Text style={styles.botaoIniciarText}>Entregar Canhotos</Text>
                     </TouchableOpacity>
+                  )}
+
+                  {viagemAtual.canhotos && !viagemAtual.aguardandoFinalizacaoGestor && (
+                    <View style={styles.infoStatus}>
+                      <Ionicons name="checkmark-circle" size={20} color="#22C55E" />
+                      <Text style={styles.infoStatusText}>Canhotos entregues. Aguardando gestor finalizar.</Text>
+                    </View>
                   )}
                 </>
               )}
@@ -749,63 +1025,18 @@ const MenuMotorista = ({ navigation, route }: any) => {
         <Text style={styles.menuTitle}>MAIS OPÇÕES</Text>
 
         <View style={styles.bottomMenu}>
-          {viagemAtual && statusAtual?.acao === 'checkin_coleta' && (
-            <TouchableOpacity style={styles.menuItem} onPress={registrarChegadaColeta}>
-              <View style={[styles.menuIcon, { backgroundColor: '#FFD700' }]}>
-                <Ionicons name="location" size={30} color="#000" />
-              </View>
-              <Text style={[styles.menuText, { color: '#FFD700', fontWeight: '700' }]}>Check-in Coleta</Text>
-            </TouchableOpacity>
-          )}
-
-          {viagemAtual && statusAtual?.acao === 'checkin_entrega' && (
-            <TouchableOpacity style={styles.menuItem} onPress={registrarChegadaEntrega}>
-              <View style={[styles.menuIcon, { backgroundColor: '#22C55E' }]}>
-                <Ionicons name="flag" size={30} color="#000" />
-              </View>
-              <Text style={[styles.menuText, { color: '#22C55E', fontWeight: '700' }]}>Chegada Entrega</Text>
-            </TouchableOpacity>
-          )}
-
           <TouchableOpacity
             style={styles.menuItem}
             onPress={() => navigation.navigate('HistoricoViagens', {
               cpfMotorista: motorista.cpf,
-              nomeMotorista: motorista.nome
+              nomeMotorista: motorista.nome,
+              motoristaDocId: motoristaDocId
             })}
           >
             <View style={styles.menuIcon}>
               <Ionicons name="map-outline" size={30} color="#0EA5E9" />
             </View>
             <Text style={styles.menuText}>Histórico</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Abastecimento')}>
-            <View style={styles.menuIcon}>
-              <MaterialIcons name="local-gas-station" size={30} color="#F59E0B" />
-            </View>
-            <Text style={styles.menuText}>Abastecer</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Chat')}>
-            <View style={styles.menuIcon}>
-              <Ionicons name="chatbubble-outline" size={30} color="#8B5CF6" />
-            </View>
-            <Text style={styles.menuText}>Chat</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Escala')}>
-            <View style={styles.menuIcon}>
-              <MaterialIcons name="event" size={30} color="#EC4899" />
-            </View>
-            <Text style={styles.menuText}>Escala</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Hodometro')}>
-            <View style={styles.menuIcon}>
-              <Ionicons name="speedometer-outline" size={30} color="#3B82F6" />
-            </View>
-            <Text style={styles.menuText}>Hodômetro</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.logoutItem} onPress={handleLogout}>
@@ -828,11 +1059,11 @@ const MenuMotorista = ({ navigation, route }: any) => {
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={styles.infoViagemModal}>
                 <Text style={styles.infoLabel}>Local</Text>
-                <Text style={styles.infoValue}>{viagemAtual?.coletaLocal}</Text>
+                <Text style={styles.infoValue}>{viagemAtual?.coletaLocal || viagemAtual?.clienteColeta || '—'}</Text>
                 <Text style={styles.infoLabel}>Cidade</Text>
-                <Text style={styles.infoValue}>{viagemAtual?.coletaCidade}</Text>
+                <Text style={styles.infoValue}>{viagemAtual?.coletaCidade || '—'}</Text>
                 <Text style={styles.infoLabel}>Horário Programado</Text>
-                <Text style={styles.infoValue}>{viagemAtual?.coletaHora || 'Não definido'}</Text>
+                <Text style={[styles.infoValue, styles.horarioDestaque]}>{viagemAtual?.coletaData || 'Não definido'}</Text>
               </View>
 
               <View style={styles.dataHoraContainer}>
@@ -911,11 +1142,11 @@ const MenuMotorista = ({ navigation, route }: any) => {
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={styles.infoViagemModal}>
                 <Text style={styles.infoLabel}>Local</Text>
-                <Text style={styles.infoValue}>{viagemAtual?.entregaLocal || viagemAtual?.clienteEntrega}</Text>
+                <Text style={styles.infoValue}>{viagemAtual?.entregaLocal || viagemAtual?.clienteEntrega || '—'}</Text>
                 <Text style={styles.infoLabel}>Cidade</Text>
-                <Text style={styles.infoValue}>{viagemAtual?.entregaCidade}</Text>
+                <Text style={styles.infoValue}>{viagemAtual?.entregaCidade || '—'}</Text>
                 <Text style={styles.infoLabel}>Horário Programado</Text>
-                <Text style={styles.infoValue}>{viagemAtual?.entregaHora || 'Não definido'}</Text>
+                <Text style={[styles.infoValue, styles.horarioDestaque]}>{viagemAtual?.entregaData || 'Não definido'}</Text>
               </View>
 
               <View style={styles.dataHoraContainer}>
@@ -1052,7 +1283,7 @@ const MenuMotorista = ({ navigation, route }: any) => {
                   <Text style={styles.botaoCancelarText}>Cancelar</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.botaoConfirmar, { backgroundColor: '#8B5CF6' }]} onPress={confirmarCanhotos} disabled={subindoCanhotos}>
-                  {subindoCanhotos ? <ActivityIndicator color="#000" /> : <Text style={styles.botaoConfirmarText}>Finalizar Viagem</Text>}
+                  {subindoCanhotos ? <ActivityIndicator color="#000" /> : <Text style={styles.botaoConfirmarText}>Enviar Canhotos</Text>}
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -1080,7 +1311,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderWidth: 1,
     borderColor: '#1A1A1A',
-    marginBottom: 20,
+    marginBottom: 15,
     minHeight: 100,
   },
   profileImage: { width: 68, height: 68, borderRadius: 34, marginRight: 14, borderWidth: 2.5, borderColor: '#FFD700' },
@@ -1095,6 +1326,52 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start', marginTop: 6, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#FFD700'
   },
   moppText: { color: '#FFD700', fontWeight: '700', fontSize: 11, marginLeft: 3 },
+
+  localizacaoCard: {
+    backgroundColor: '#0A0A0A',
+    marginHorizontal: 20,
+    marginBottom: 15,
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
+  },
+  localizacaoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  localizacaoTitulo: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFD700',
+    marginLeft: 8,
+    flex: 1,
+  },
+  localizacaoLoader: {
+    marginLeft: 8,
+  },
+  localizacaoContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    backgroundColor: '#1A1A1A',
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  localizacaoCidade: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFF',
+    marginLeft: 10,
+  },
+  localizacaoAtualizacao: {
+    fontSize: 11,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 0,
+  },
 
   viagemAtualContainer: { marginHorizontal: 20, marginBottom: 25 },
   sectionTitle: {
@@ -1131,7 +1408,6 @@ const styles = StyleSheet.create({
   cidadeLabel: { fontSize: 9, color: '#666', marginBottom: 3, fontWeight: '700', letterSpacing: 0.5 },
   cidadeNome: { fontSize: 13.5, fontWeight: '700', color: '#FFF', textAlign: 'center', minHeight: 32 },
   dataText: { fontSize: 10.5, color: '#888', marginTop: 2 },
-  horarioText: { fontSize: 10.5, color: '#FFD700', marginTop: 2, fontWeight: '600' },
   clienteText: { fontSize: 11, color: '#AAA', marginTop: 4, textAlign: 'center', fontWeight: '500' },
   arrowIcon: { marginTop: 20 },
 
@@ -1160,6 +1436,16 @@ const styles = StyleSheet.create({
   },
   infoText: { fontSize: 11.5, color: '#CCC', fontWeight: '600', flex: 1, textAlign: 'center' },
 
+  botaoCheckinColeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFD700',
+    paddingVertical: 13,
+    borderRadius: 12,
+    marginTop: 12,
+    gap: 8,
+  },
   botaoIniciarViagem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1175,7 +1461,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-
   botaoChegadaEntrega: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1186,7 +1471,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
     gap: 8,
   },
-
   botaoPosEntrega: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1196,6 +1480,31 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 12,
     gap: 8,
+  },
+  botaoEntregarCanhotos: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#8B5CF6',
+    paddingVertical: 13,
+    borderRadius: 12,
+    marginTop: 12,
+    gap: 8,
+  },
+  infoStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#22C55E15',
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 12,
+    gap: 8,
+  },
+  infoStatusText: {
+    color: '#22C55E',
+    fontSize: 13,
+    fontWeight: '600',
   },
 
   noViagemCard: {
@@ -1263,6 +1572,7 @@ const styles = StyleSheet.create({
   infoViagemModal: { backgroundColor: '#1A1A1A', padding: 14, borderRadius: 12, marginBottom: 18 },
   infoLabel: { fontSize: 12, color: '#666', marginTop: 8 },
   infoValue: { fontSize: 15, fontWeight: '700', color: '#FFF', marginTop: 2 },
+  horarioDestaque: { color: '#FFD700' },
 
   dataHoraContainer: { marginBottom: 18 },
   label: { fontSize: 13, fontWeight: '600', color: '#AAA', marginBottom: 6 },

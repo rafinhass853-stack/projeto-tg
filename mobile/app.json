@@ -33,7 +33,8 @@
           "photosPermission": "O aplicativo precisa de acesso às suas fotos para anexar comprovantes.",
           "cameraPermission": "O aplicativo precisa de acesso à câmera para registrar o check-in."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }
