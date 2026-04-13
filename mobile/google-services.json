@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "882195229531",
+    "project_id": "projeto-tg-edef9",
+    "storage_bucket": "projeto-tg-edef9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:882195229531:android:3b211ca537c72eeb92887e",
+        "android_client_info": {
+          "package_name": "projeto.tg"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBkfutPFoLrmgpgY-9bxFnXN6adgsl4HFs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
