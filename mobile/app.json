@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -16,21 +16,21 @@
       "supportsTablet": true
     },
     "android": {
-  "adaptiveIcon": {
-    "foregroundImage": "./assets/adaptive-icon.png",
-    "backgroundColor": "#ffffff"
-  },
-  "package": "projeto.tg",
-  "googleServicesFile": "./google-services.json",
-  "permissions": [
-    "ACCESS_FINE_LOCATION",
-    "ACCESS_COARSE_LOCATION",
-    "CAMERA",
-    "RECORD_AUDIO",
-    "READ_EXTERNAL_STORAGE",
-    "WRITE_EXTERNAL_STORAGE"
-  ]
-},
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "projeto.tg",
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "RECORD_AUDIO",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
     "web": {
       "favicon": "./assets/favicon.png"
     },
